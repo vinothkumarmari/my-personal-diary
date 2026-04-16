@@ -18,10 +18,14 @@
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     .light-mode { background: linear-gradient(135deg, #f5f3ef 0%, #e8e4dd 100%); color: #2c2c2a; }
     .dark-mode { background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); color: #f5f5f5; }
-    .book-container { perspective: 1800px; display: flex; justify-content: center; align-items: center; min-height: 550px; user-select: none; }
+    .book-container { display: flex; justify-content: center; align-items: center; min-height: 550px; user-select: none; }
     .book-maximized { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background: rgba(30,25,20,0.95); display: flex; flex-direction: column; }
     .book-wrapper {
-      position: relative; width: 700px; height: 500px; transform-style: preserve-3d;
+      position: relative; width: 700px; height: 500px;
+      perspective: 2000px;
+      border-radius: 4px;
+      box-shadow: 0 5px 30px rgba(0,0,0,0.3), 0 0 0 1px rgba(0,0,0,0.05);
+      background: #f5f0e6;
     }
     .book-wrapper.maximized { width: 90vw; height: calc(100vh - 130px); max-width: 1200px; }
     /* Book spine */
@@ -34,11 +38,12 @@
     .flip-page {
       position: absolute; top: 0; width: 50%; height: 100%;
       transform-style: preserve-3d;
-      overflow: hidden; z-index: 15;
+      z-index: 15;
     }
     .flip-page-front, .flip-page-back {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      backface-visibility: hidden; display: flex; align-items: center; justify-content: center;
+      backface-visibility: hidden; -webkit-backface-visibility: hidden;
+      display: flex; align-items: center; justify-content: center;
       overflow: hidden;
     }
     .flip-page-front { background: linear-gradient(to left, #f5f0e6 0%, #fffdf7 20%, #fffdf7 100%); }
@@ -79,15 +84,15 @@
     }
     .flip-page.flipping-right {
       left: 50%; transform-origin: left center;
-      animation: flipToLeft 0.9s cubic-bezier(0.390, 0.575, 0.565, 1.000) forwards;
+      animation: flipToLeft 0.9s ease-in-out forwards;
     }
     .flip-page.flipping-left {
       left: 0%; transform-origin: right center;
-      animation: flipToRight 0.9s cubic-bezier(0.390, 0.575, 0.565, 1.000) forwards;
+      animation: flipToRight 0.9s ease-in-out forwards;
     }
     /* Static left page */
     .static-page-left {
-      position: absolute; top: 0; left: 0; width: 50%; height: 100%;
+      position: absolute; top: 0; left: 0; width: 50%; height: 100%; z-index: 1;
       background: linear-gradient(to right, #efe9de 0%, #fffdf7 15%, #fffdf7 100%);
       display: flex; align-items: center; justify-content: center; overflow: hidden;
       border-right: 1px solid rgba(0,0,0,0.06);
@@ -99,7 +104,7 @@
     }
     /* Static right page */
     .static-page-right {
-      position: absolute; top: 0; right: 0; width: 50%; height: 100%;
+      position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 1;
       background: linear-gradient(to left, #efe9de 0%, #fffdf7 15%, #fffdf7 100%);
       display: flex; align-items: center; justify-content: center; overflow: hidden;
       box-shadow: inset 10px 0 20px rgba(0,0,0,0.03);
