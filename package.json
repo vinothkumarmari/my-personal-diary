@@ -1,0 +1,19 @@
+{
+  "name": "my-personal-diary",
+  "version": "1.0.0",
+  "description": "A personal digital diary with journal entries, book reading, and drawing features",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["diary", "journal", "personal", "notes", "drawing", "book-reader"],
+  "author": "Vinoth",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
