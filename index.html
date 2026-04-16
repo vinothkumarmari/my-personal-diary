@@ -405,6 +405,8 @@
       const [isMaximized, setIsMaximized] = useState(false);
       const [pageImages, setPageImages] = useState({});
       const [pdfDoc, setPdfDoc] = useState(null);
+      const [dragState, setDragState] = useState(null); // { startX, currentX, direction, wrapperWidth }
+      const bookWrapperRef = useRef(null);
 
       const renderPage = async (pdf, pageNum, scale = 1.5) => {
         const page = await pdf.getPage(pageNum + 1);
@@ -491,6 +493,81 @@
         }
       };
 
+      // ---- Drag & Touch flip handlers ----
+      const getClientX = (e) => e.touches ? e.touches[0].clientX : e.clientX;
+
+      const handleDragStart = (e) => {
+        if (isFlipping || !bookWrapperRef.current) return;
+        const rect = bookWrapperRef.current.getBoundingClientRect();
+        const x = getClientX(e);
+        const relX = x - rect.left;
+        const mid = rect.width / 2;
+        // Determine direction based on which half was grabbed
+        let dir = null;
+        if (relX > mid && currentPage < totalPages - 2) dir = 'next';
+        else if (relX <= mid && currentPage > 0) dir = 'prev';
+        if (!dir) return;
+        e.preventDefault();
+        // Preload pages
+        if (dir === 'next') {
+          const np = currentPage + 2;
+          if (pdfDoc && !pageImages[np]) renderPage(pdfDoc, np, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [np]: img})));
+          if (pdfDoc && !pageImages[np+1]) renderPage(pdfDoc, np+1, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [np+1]: img})));
+        } else {
+          const pp = currentPage - 2;
+          if (pdfDoc && pp >= 0 && !pageImages[pp]) renderPage(pdfDoc, pp, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [pp]: img})));
+          if (pdfDoc && pp+1 >= 0 && !pageImages[pp+1]) renderPage(pdfDoc, pp+1, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [pp+1]: img})));
+        }
+        setDragState({ startX: x, currentX: x, direction: dir, wrapperWidth: rect.width });
+      };
+
+      const handleDragMove = (e) => {
+        if (!dragState) return;
+        e.preventDefault();
+        setDragState(prev => ({ ...prev, currentX: getClientX(e) }));
+      };
+
+      const handleDragEnd = (e) => {
+        if (!dragState) return;
+        const dx = dragState.currentX - dragState.startX;
+        const threshold = dragState.wrapperWidth * 0.15; // 15% of book width to commit
+        if (dragState.direction === 'next' && dx < -threshold) {
+          turnPage('next');
+        } else if (dragState.direction === 'prev' && dx > threshold) {
+          turnPage('prev');
+        }
+        setDragState(null);
+      };
+
+      // Calculate drag rotation angle (0 to -180 for next, -180 to 0 for prev)
+      const getDragAngle = () => {
+        if (!dragState) return 0;
+        const dx = dragState.currentX - dragState.startX;
+        const halfWidth = dragState.wrapperWidth / 2;
+        if (dragState.direction === 'next') {
+          const progress = Math.max(0, Math.min(1, -dx / halfWidth));
+          return -progress * 180;
+        } else {
+          const progress = Math.max(0, Math.min(1, dx / halfWidth));
+          return -180 + progress * 180;
+        }
+      };
+
+      // Cleanup touch/mouse on unmount
+      useEffect(() => {
+        const onUp = () => setDragState(prev => {
+          if (!prev) return null;
+          const dx = prev.currentX - prev.startX;
+          const threshold = prev.wrapperWidth * 0.15;
+          if (prev.direction === 'next' && dx < -threshold) turnPage('next');
+          else if (prev.direction === 'prev' && dx > threshold) turnPage('prev');
+          return null;
+        });
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('touchend', onUp);
+        return () => { window.removeEventListener('mouseup', onUp); window.removeEventListener('touchend', onUp); };
+      }, [currentPage, totalPages, isFlipping]);
+
       if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 40, height: 40 }}></div><p style={{ marginTop: '1rem', color: darkMode ? '#aaa' : '#888' }}>{currentBook ? 'Loading book...' : 'Loading library...'}</p></div>;
 
       if (!currentBook) {
@@ -552,20 +629,54 @@
             <button onClick={() => { setIsMaximized(!isMaximized); setPageImages({}); }} style={{ padding: '7px 14px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>{isMaximized ? '🗗 Minimize' : '🗖 Maximize'}</button>
           </div>
           <div className="book-container" style={isMaximized ? { flex: 1, minHeight: 0, alignItems: 'center' } : {}}>
-            <div className={'book-wrapper' + (isMaximized ? ' maximized' : '')}>
+            <div className={'book-wrapper' + (isMaximized ? ' maximized' : '')} ref={bookWrapperRef}
+              onMouseDown={handleDragStart} onMouseMove={handleDragMove} onMouseUp={handleDragEnd}
+              onTouchStart={handleDragStart} onTouchMove={handleDragMove} onTouchEnd={handleDragEnd}
+              style={{ cursor: dragState ? 'grabbing' : 'grab' }}>
               {/* Static left page */}
               <div className="static-page-left">
-                <PageImg idx={isFlipping && flipDirection === 'prev' ? li - 2 : li} />
-                <span className="flip-page-num" style={{ left: 20 }}>{isFlipping && flipDirection === 'prev' ? (li > 1 ? li - 1 : 1) : li + 1}</span>
+                <PageImg idx={(isFlipping && flipDirection === 'prev') || (dragState && dragState.direction === 'prev') ? li - 2 : li} />
+                <span className="flip-page-num" style={{ left: 20 }}>{(isFlipping && flipDirection === 'prev') || (dragState && dragState.direction === 'prev') ? (li > 1 ? li - 1 : 1) : li + 1}</span>
               </div>
               {/* Static right page */}
               <div className="static-page-right">
-                <PageImg idx={isFlipping && flipDirection === 'next' ? ri + 2 : ri} fallback={ri >= totalPages ? '✨ The End ✨' : null} />
-                <span className="flip-page-num" style={{ right: 20 }}>{isFlipping && flipDirection === 'next' ? (ri + 3 <= totalPages ? ri + 3 : '') : (ri < totalPages ? ri + 1 : '')}</span>
+                <PageImg idx={(isFlipping && flipDirection === 'next') || (dragState && dragState.direction === 'next') ? ri + 2 : ri} fallback={ri >= totalPages ? '✨ The End ✨' : null} />
+                <span className="flip-page-num" style={{ right: 20 }}>{(isFlipping && flipDirection === 'next') || (dragState && dragState.direction === 'next') ? (ri + 3 <= totalPages ? ri + 3 : '') : (ri < totalPages ? ri + 1 : '')}</span>
               </div>
               {/* Spine */}
               <div className="book-spine"></div>
-              {/* Flipping page - next */}
+              {/* Drag-interactive page (follows mouse/finger) */}
+              {dragState && !isFlipping && dragState.direction === 'next' && (
+                <React.Fragment>
+                  <div className="flip-page" style={{ left: '50%', transformOrigin: 'left center', transform: 'perspective(1800px) rotateY(' + getDragAngle() + 'deg) scale(' + (1 + Math.sin(Math.abs(getDragAngle()) * Math.PI / 180) * 0.04) + ')', transition: 'none' }}>
+                    <div className="flip-page-front" style={{}}> 
+                      <PageImg idx={ri} />
+                      <span className="flip-page-num" style={{ right: 20 }}>{ri + 1}</span>
+                    </div>
+                    <div className="flip-page-back">
+                      <PageImg idx={ri + 1} />
+                      <span className="flip-page-num" style={{ left: 20 }}>{ri + 2}</span>
+                    </div>
+                  </div>
+                  <div style={{ position: 'absolute', top: 0, left: '50%', width: '50%', height: '100%', zIndex: 14, pointerEvents: 'none', background: 'linear-gradient(to right, rgba(0,0,0,' + (0.2 * Math.sin(Math.abs(getDragAngle()) * Math.PI / 180)) + ') 0%, transparent 40%)' }}></div>
+                </React.Fragment>
+              )}
+              {dragState && !isFlipping && dragState.direction === 'prev' && (
+                <React.Fragment>
+                  <div className="flip-page" style={{ left: '0%', transformOrigin: 'right center', transform: 'perspective(1800px) rotateY(' + getDragAngle() + 'deg) scale(' + (1 + Math.sin(Math.abs(getDragAngle() + 180) * Math.PI / 180) * 0.04) + ')', transition: 'none' }}>
+                    <div className="flip-page-front" style={{ transform: 'rotateY(180deg)' }}>
+                      <PageImg idx={li - 1} />
+                      <span className="flip-page-num" style={{ left: 20 }}>{li}</span>
+                    </div>
+                    <div className="flip-page-back" style={{ transform: 'rotateY(0deg)' }}>
+                      <PageImg idx={li} />
+                      <span className="flip-page-num" style={{ right: 20 }}>{li + 1}</span>
+                    </div>
+                  </div>
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: '50%', height: '100%', zIndex: 14, pointerEvents: 'none', background: 'linear-gradient(to left, rgba(0,0,0,' + (0.2 * Math.sin(Math.abs(getDragAngle() + 180) * Math.PI / 180)) + ') 0%, transparent 40%)' }}></div>
+                </React.Fragment>
+              )}
+              {/* Flipping page - next (auto animation) */}
               {isFlipping && flipDirection === 'next' && (
                 <React.Fragment>
                   <div className="flip-page flipping-right">
