@@ -376,12 +376,14 @@
           try {
             setImportProgress('Parsing PDF...');
             const arrayBuf = ev.target.result;
-            const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(arrayBuf) }).promise;
-            // Convert to base64 for storage
-            const bytes = new Uint8Array(arrayBuf);
+            // Copy the buffer since pdfjsLib.getDocument transfers ownership
+            const pdfBytes = new Uint8Array(arrayBuf);
+            const pdfBytesCopy = new Uint8Array(pdfBytes);
+            const pdf = await window.pdfjsLib.getDocument({ data: pdfBytesCopy }).promise;
+            // Convert original bytes to base64 for storage
             let binary = '';
             const chunkSize = 8192;
-            for (let i = 0; i < bytes.length; i += chunkSize) { binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)); }
+            for (let i = 0; i < pdfBytes.length; i += chunkSize) { binary += String.fromCharCode.apply(null, pdfBytes.subarray(i, i + chunkSize)); }
             const pdfBase64 = btoa(binary);
             const bookData = { name: file.name.replace('.pdf', ''), totalPages: pdf.numPages, pdfBase64, lastPage: 0, addedDate: new Date().toLocaleString() };
             setSyncing('syncing'); setImportProgress('Uploading to cloud...');
