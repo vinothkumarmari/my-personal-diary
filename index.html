@@ -298,9 +298,10 @@
             const id = await firestore.saveBook(bookData);
             setBooks([{ id, name: bookData.name, totalPages: bookData.totalPages, lastPage: 0, addedDate: bookData.addedDate }, ...books]);
             setSyncing('synced'); setTimeout(() => setSyncing(null), 2000);
-          } catch (err) { console.error(err); alert('Error loading PDF.'); setSyncing('error'); }
+          } catch (err) { console.error('PDF Import Error:', err); alert('Error loading PDF: ' + (err.message || err)); setSyncing('error'); }
           setImporting(false);
         };
+        reader.onerror = () => { alert('Error reading file.'); setImporting(false); };
         reader.readAsArrayBuffer(file); e.target.value = '';
       };
 
