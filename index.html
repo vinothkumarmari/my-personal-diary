@@ -48,47 +48,78 @@
     }
     .flip-page-front { background: linear-gradient(to left, #f5f0e6 0%, #fffdf7 20%, #fffdf7 100%); }
     .flip-page-back { background: linear-gradient(to right, #f0ebe1 0%, #faf6ee 20%, #faf6ee 100%); transform: rotateY(180deg); }
-    /* Page shadow/lighting effects */
+    /* Animated light reflection on front (simulates curved paper catching light) */
     .flip-page-front::after {
-      content: ''; position: absolute; top: 0; right: 0; width: 60px; height: 100%;
-      background: linear-gradient(to left, rgba(0,0,0,0.12), transparent); pointer-events: none;
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      background: linear-gradient(to right, transparent 30%, rgba(255,255,255,0.15) 45%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.15) 55%, transparent 70%);
+      animation: shineMove 0.9s ease-in-out forwards;
     }
+    @keyframes shineMove {
+      0% { opacity: 0; transform: translateX(-100%); }
+      20% { opacity: 1; }
+      80% { opacity: 1; }
+      100% { opacity: 0; transform: translateX(100%); }
+    }
+    /* Shadow on back face */
     .flip-page-back::after {
-      content: ''; position: absolute; top: 0; left: 0; width: 60px; height: 100%;
-      background: linear-gradient(to right, rgba(0,0,0,0.15), transparent); pointer-events: none;
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: linear-gradient(to right, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.05) 15%, transparent 40%);
+      pointer-events: none;
     }
-    /* Dynamic shadow on the book during flip */
+    /* Dynamic shadow cast on underlying pages during flip */
     .flip-shadow-right {
       position: absolute; top: 0; left: 50%; width: 50%; height: 100%; z-index: 14;
-      background: linear-gradient(to right, rgba(0,0,0,0.2) 0%, transparent 40%);
-      pointer-events: none; animation: shadowFadeIn 0.3s ease-out forwards;
+      pointer-events: none;
+      animation: castShadowRight 0.9s ease-in-out forwards;
+    }
+    @keyframes castShadowRight {
+      0% { background: linear-gradient(to right, rgba(0,0,0,0.3) 0%, transparent 5%); }
+      30% { background: linear-gradient(to right, rgba(0,0,0,0.25) 0%, transparent 30%); }
+      50% { background: linear-gradient(to right, rgba(0,0,0,0.15) 0%, transparent 50%); }
+      80% { background: linear-gradient(to right, rgba(0,0,0,0.08) 0%, transparent 30%); }
+      100% { background: linear-gradient(to right, rgba(0,0,0,0) 0%, transparent 5%); }
     }
     .flip-shadow-left {
       position: absolute; top: 0; left: 0; width: 50%; height: 100%; z-index: 14;
-      background: linear-gradient(to left, rgba(0,0,0,0.2) 0%, transparent 40%);
-      pointer-events: none; animation: shadowFadeIn 0.3s ease-out forwards;
+      pointer-events: none;
+      animation: castShadowLeft 0.9s ease-in-out forwards;
     }
-    @keyframes shadowFadeIn { from { opacity: 0; } to { opacity: 1; } }
-    /* Flipping animations - keyframes for realistic page turn */
+    @keyframes castShadowLeft {
+      0% { background: linear-gradient(to left, rgba(0,0,0,0.3) 0%, transparent 5%); }
+      30% { background: linear-gradient(to left, rgba(0,0,0,0.25) 0%, transparent 30%); }
+      50% { background: linear-gradient(to left, rgba(0,0,0,0.15) 0%, transparent 50%); }
+      80% { background: linear-gradient(to left, rgba(0,0,0,0.08) 0%, transparent 30%); }
+      100% { background: linear-gradient(to left, rgba(0,0,0,0) 0%, transparent 5%); }
+    }
+    /* Flipping animations - realistic page turn with paper bend */
     @keyframes flipToLeft {
-      0% { transform: rotateY(0deg); }
-      30% { transform: rotateY(-55deg) skewY(2deg); }
-      60% { transform: rotateY(-130deg) skewY(-1deg); }
-      100% { transform: rotateY(-180deg) skewY(0deg); }
+      0%   { transform: perspective(1800px) rotateY(0deg); }
+      10%  { transform: perspective(1800px) rotateY(-15deg) scale(1.02); }
+      25%  { transform: perspective(1500px) rotateY(-45deg) scale(1.04); }
+      40%  { transform: perspective(1200px) rotateY(-80deg) scale(1.03); }
+      55%  { transform: perspective(1000px) rotateY(-100deg) scale(1.02); }
+      70%  { transform: perspective(1200px) rotateY(-135deg) scale(1.01); }
+      85%  { transform: perspective(1500px) rotateY(-165deg) scale(1.005); }
+      100% { transform: perspective(1800px) rotateY(-180deg) scale(1); }
     }
     @keyframes flipToRight {
-      0% { transform: rotateY(-180deg); }
-      30% { transform: rotateY(-125deg) skewY(-2deg); }
-      60% { transform: rotateY(-50deg) skewY(1deg); }
-      100% { transform: rotateY(0deg) skewY(0deg); }
+      0%   { transform: perspective(1800px) rotateY(-180deg); }
+      10%  { transform: perspective(1800px) rotateY(-165deg) scale(1.02); }
+      25%  { transform: perspective(1500px) rotateY(-135deg) scale(1.04); }
+      40%  { transform: perspective(1200px) rotateY(-100deg) scale(1.03); }
+      55%  { transform: perspective(1000px) rotateY(-80deg) scale(1.02); }
+      70%  { transform: perspective(1200px) rotateY(-45deg) scale(1.01); }
+      85%  { transform: perspective(1500px) rotateY(-15deg) scale(1.005); }
+      100% { transform: perspective(1800px) rotateY(0deg) scale(1); }
     }
     .flip-page.flipping-right {
       left: 50%; transform-origin: left center;
-      animation: flipToLeft 0.9s ease-in-out forwards;
+      animation: flipToLeft 1s ease-in-out forwards;
     }
     .flip-page.flipping-left {
       left: 0%; transform-origin: right center;
-      animation: flipToRight 0.9s ease-in-out forwards;
+      animation: flipToRight 1s ease-in-out forwards;
     }
     /* Static left page */
     .static-page-left {
@@ -449,14 +480,14 @@
           const nextPage = currentPage + 2;
           if (pdfDoc && !pageImages[nextPage]) renderPage(pdfDoc, nextPage, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [nextPage]: img})));
           if (pdfDoc && !pageImages[nextPage+1]) renderPage(pdfDoc, nextPage+1, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [nextPage+1]: img})));
-          setTimeout(() => { setCurrentPage(p => Math.min(p + 2, totalPages - 1)); setIsFlipping(false); setFlipDirection(''); }, 950);
+          setTimeout(() => { setCurrentPage(p => Math.min(p + 2, totalPages - 1)); setIsFlipping(false); setFlipDirection(''); }, 1050);
         }
         else if (dir === 'prev' && currentPage > 0) {
           setFlipDirection('prev'); setIsFlipping(true);
           const prevPage = currentPage - 2;
           if (pdfDoc && prevPage >= 0 && !pageImages[prevPage]) renderPage(pdfDoc, prevPage, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [prevPage]: img})));
           if (pdfDoc && prevPage+1 >= 0 && !pageImages[prevPage+1]) renderPage(pdfDoc, prevPage+1, isMaximized ? 2.0 : 1.5).then(img => setPageImages(prev => ({...prev, [prevPage+1]: img})));
-          setTimeout(() => { setCurrentPage(p => Math.max(p - 2, 0)); setIsFlipping(false); setFlipDirection(''); }, 950);
+          setTimeout(() => { setCurrentPage(p => Math.max(p - 2, 0)); setIsFlipping(false); setFlipDirection(''); }, 1050);
         }
       };
 
