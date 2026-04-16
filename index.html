@@ -8,546 +8,254 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Merriweather:ital,wght@0,300;0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Lora:ital,wght@0,400;0,500;1,400&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    }
-    .light-mode {
-      background: linear-gradient(135deg, #f5f3ef 0%, #e8e4dd 100%);
-      color: #2c2c2a;
-    }
-    .dark-mode {
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      color: #f5f5f5;
-    }
-    
-    /* Book Reader Styles */
-    .book-container {
-      perspective: 2000px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 500px;
-    }
-    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .light-mode { background: linear-gradient(135deg, #f5f3ef 0%, #e8e4dd 100%); color: #2c2c2a; }
+    .dark-mode { background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); color: #f5f5f5; }
+    .book-container { perspective: 2000px; display: flex; justify-content: center; align-items: center; min-height: 500px; }
     .book {
-      position: relative;
-      width: 700px;
-      height: 500px;
-      transform-style: preserve-3d;
-      display: flex;
+      position: relative; width: 700px; height: 500px; transform-style: preserve-3d; display: flex;
       background: linear-gradient(90deg, #f5f0e6 0%, #fff9f0 50%, #f5f0e6 100%);
       border-radius: 0 8px 8px 0;
-      box-shadow: 
-        -5px 5px 15px rgba(0,0,0,0.3),
-        inset 0 0 50px rgba(0,0,0,0.05);
+      box-shadow: -5px 5px 15px rgba(0,0,0,0.3), inset 0 0 50px rgba(0,0,0,0.05);
     }
-    
     .book::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 30px;
-      height: 100%;
-      background: linear-gradient(90deg, 
-        #8B4513 0%, 
-        #A0522D 30%, 
-        #8B4513 50%,
-        #654321 100%);
-      border-radius: 3px 0 0 3px;
-      box-shadow: inset -2px 0 5px rgba(0,0,0,0.3);
+      content: ''; position: absolute; left: 0; top: 0; width: 30px; height: 100%;
+      background: linear-gradient(90deg, #8B4513 0%, #A0522D 30%, #8B4513 50%, #654321 100%);
+      border-radius: 3px 0 0 3px; box-shadow: inset -2px 0 5px rgba(0,0,0,0.3);
     }
-    
     .page-left, .page-right {
-      width: 50%;
-      height: 100%;
-      padding: 40px 30px 40px 50px;
-      overflow-y: auto;
-      position: relative;
-      background: linear-gradient(to right, #f8f4eb, #fffdf7);
+      width: 50%; height: 100%; padding: 40px 30px 40px 50px; overflow-y: auto;
+      position: relative; background: linear-gradient(to right, #f8f4eb, #fffdf7);
     }
-    
     .page-right {
-      padding: 40px 50px 40px 30px;
-      background: linear-gradient(to left, #f8f4eb, #fffdf7);
-      border-left: 1px solid rgba(0,0,0,0.1);
-      box-shadow: inset 5px 0 15px rgba(0,0,0,0.05);
+      padding: 40px 50px 40px 30px; background: linear-gradient(to left, #f8f4eb, #fffdf7);
+      border-left: 1px solid rgba(0,0,0,0.1); box-shadow: inset 5px 0 15px rgba(0,0,0,0.05);
     }
-    
     .page-left::before, .page-right::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      background: repeating-linear-gradient(
-        transparent,
-        transparent 28px,
-        rgba(0,0,0,0.02) 28px,
-        rgba(0,0,0,0.02) 29px
-      );
+      content: ''; position: absolute; top: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(transparent, transparent 28px, rgba(0,0,0,0.02) 28px, rgba(0,0,0,0.02) 29px);
       pointer-events: none;
     }
-    
-    .page-number {
-      position: absolute;
-      bottom: 15px;
-      font-size: 12px;
-      color: #8B7355;
-      font-style: italic;
-    }
-    
+    .page-number { position: absolute; bottom: 15px; font-size: 12px; color: #8B7355; font-style: italic; }
     .page-left .page-number { left: 50px; }
     .page-right .page-number { right: 50px; }
-    
     .page-turn-btn {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      width: 50px;
-      height: 80px;
-      background: rgba(139, 69, 19, 0.1);
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 24px;
-      color: #8B4513;
-      transition: all 0.3s;
-      border-radius: 4px;
+      position: absolute; top: 50%; transform: translateY(-50%); width: 50px; height: 80px;
+      background: rgba(139,69,19,0.1); border: none; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; font-size: 24px; color: #8B4513;
+      transition: all 0.3s; border-radius: 4px;
     }
-    
-    .page-turn-btn:hover {
-      background: rgba(139, 69, 19, 0.2);
-    }
-    
+    .page-turn-btn:hover { background: rgba(139,69,19,0.2); }
     .page-turn-btn.prev { left: -60px; }
     .page-turn-btn.next { right: -60px; }
-    
-    @keyframes pageFlipRight {
-      0% { transform: rotateY(0deg); }
-      100% { transform: rotateY(-180deg); }
-    }
-    
-    @keyframes pageFlipLeft {
-      0% { transform: rotateY(-180deg); }
-      100% { transform: rotateY(0deg); }
-    }
-    
-    .page-flipping {
-      animation: pageFlipRight 0.6s ease-in-out;
-    }
-    
-    /* Drawing Canvas Styles */
-    .drawing-canvas-container {
-      position: relative;
-      border: 2px solid #d3d1c7;
-      border-radius: 12px;
-      overflow: hidden;
-      background: white;
-    }
-    
-    .drawing-toolbar {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      padding: 15px;
-      background: rgba(0,0,0,0.03);
-      border-bottom: 1px solid #e0ddd5;
-      align-items: center;
-    }
-    
-    .color-picker-container {
-      display: flex;
-      gap: 5px;
-      align-items: center;
-    }
-    
-    .color-swatch {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      border: 2px solid transparent;
-      cursor: pointer;
-      transition: transform 0.2s;
-    }
-    
-    .color-swatch:hover {
-      transform: scale(1.1);
-    }
-    
-    .color-swatch.active {
-      border-color: #333;
-      box-shadow: 0 0 0 2px white, 0 0 0 4px #1D9E75;
-    }
-    
-    .brush-size-slider {
-      width: 100px;
-    }
-    
-    .saved-drawings-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 15px;
-      margin-top: 20px;
-    }
-    
-    .saved-drawing-item {
-      border: 1px solid #e0ddd5;
-      border-radius: 8px;
-      overflow: hidden;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    
-    .saved-drawing-item:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-    
-    .saved-drawing-item img {
-      width: 100%;
-      height: 120px;
-      object-fit: cover;
-    }
+    .drawing-canvas-container { position: relative; border: 2px solid #d3d1c7; border-radius: 12px; overflow: hidden; background: white; }
+    .drawing-toolbar { display: flex; gap: 10px; flex-wrap: wrap; padding: 15px; background: rgba(0,0,0,0.03); border-bottom: 1px solid #e0ddd5; align-items: center; }
+    .color-picker-container { display: flex; gap: 5px; align-items: center; }
+    .color-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.2s; }
+    .color-swatch:hover { transform: scale(1.1); }
+    .color-swatch.active { border-color: #333; box-shadow: 0 0 0 2px white, 0 0 0 4px #1D9E75; }
+    .brush-size-slider { width: 100px; }
+    .saved-drawings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
+    .saved-drawing-item { border: 1px solid #e0ddd5; border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.2s; }
+    .saved-drawing-item:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+    .saved-drawing-item img { width: 100%; height: 120px; object-fit: cover; }
+    .loading-spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .sync-indicator { position: fixed; top: 15px; right: 15px; padding: 6px 14px; border-radius: 20px; font-size: 12px; z-index: 999; transition: all 0.3s; }
   </style>
 </head>
 <body>
   <div id="root"></div>
-  
-  <script type="text/babel">
-    const { useState, useEffect, useRef, useCallback } = React;
 
-    // Set PDF.js worker
+  <script>
+    // Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyBjKkRN2wwXg8ww2hvAmU83gpLt4WaVcsA",
+      authDomain: "my-personal-diary-dcb9a.firebaseapp.com",
+      projectId: "my-personal-diary-dcb9a",
+      storageBucket: "my-personal-diary-dcb9a.firebasestorage.app",
+      messagingSenderId: "564470464140",
+      appId: "1:564470464140:web:2bfdb2fbef0baaf0e9c5a9",
+      measurementId: "G-1WQL5Y9KE5"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // PDF.js worker
     if (window.pdfjsLib) {
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     }
+  </script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ==================== FIREBASE HELPER ====================
+    function useFirestore(userId) {
+      const getCollection = (name) => db.collection('users').doc(userId).collection(name);
+
+      const loadEntries = async () => {
+        const snap = await getCollection('entries').orderBy('createdAt', 'desc').get();
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      };
+
+      const saveEntry = async (entry) => {
+        const ref = await getCollection('entries').add({ ...entry, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        return ref.id;
+      };
+
+      const deleteEntry = async (id) => { await getCollection('entries').doc(id).delete(); };
+
+      const loadBooks = async () => {
+        const snap = await getCollection('books').orderBy('addedAt', 'desc').get();
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      };
+
+      const saveBook = async (book) => {
+        const meta = { name: book.name, totalPages: book.totalPages, lastPage: book.lastPage || 0, addedDate: book.addedDate, addedAt: firebase.firestore.FieldValue.serverTimestamp() };
+        const ref = await getCollection('books').add(meta);
+        const chunkSize = 10;
+        for (let i = 0; i < book.texts.length; i += chunkSize) {
+          await getCollection('books').doc(ref.id).collection('pages').doc('chunk_' + i).set({ startIndex: i, texts: book.texts.slice(i, i + chunkSize) });
+        }
+        return ref.id;
+      };
+
+      const loadBookPages = async (bookId) => {
+        const snap = await getCollection('books').doc(bookId).collection('pages').get();
+        const all = [];
+        snap.docs.sort((a, b) => a.data().startIndex - b.data().startIndex).forEach(doc => {
+          const d = doc.data();
+          d.texts.forEach((t, i) => { all[d.startIndex + i] = t; });
+        });
+        return all;
+      };
+
+      const updateBookProgress = async (bookId, lastPage) => { await getCollection('books').doc(bookId).update({ lastPage }); };
+
+      const deleteBook = async (bookId) => {
+        const pages = await getCollection('books').doc(bookId).collection('pages').get();
+        const batch = db.batch();
+        pages.docs.forEach(doc => batch.delete(doc.ref));
+        batch.delete(getCollection('books').doc(bookId));
+        await batch.commit();
+      };
+
+      const loadDrawings = async () => {
+        const snap = await getCollection('drawings').orderBy('createdAt', 'desc').get();
+        return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      };
+
+      const saveDrawing = async (drawing) => {
+        const ref = await getCollection('drawings').add({ ...drawing, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        return ref.id;
+      };
+
+      const deleteDrawing = async (id) => { await getCollection('drawings').doc(id).delete(); };
+
+      return { loadEntries, saveEntry, deleteEntry, loadBooks, saveBook, loadBookPages, updateBookProgress, deleteBook, loadDrawings, saveDrawing, deleteDrawing };
+    }
+
+    // ==================== SYNC INDICATOR ====================
+    function SyncIndicator({ status }) {
+      if (!status) return null;
+      const info = { syncing: { bg: '#f59e0b', text: '☁️ Syncing...' }, synced: { bg: '#1D9E75', text: '✅ Synced' }, error: { bg: '#e24b4a', text: '❌ Sync Error' } };
+      const s = info[status] || info.synced;
+      return <div className="sync-indicator" style={{ background: s.bg, color: 'white', opacity: status === 'synced' ? 0.8 : 1 }}>{status === 'syncing' && <span className="loading-spinner" style={{ width: 14, height: 14, marginRight: 6, verticalAlign: 'middle' }}></span>}{s.text}</div>;
+    }
 
     // ==================== DRAWING COMPONENT ====================
-    function DrawingCanvas({ darkMode }) {
+    function DrawingCanvas({ darkMode, userId }) {
       const canvasRef = useRef(null);
       const [isDrawing, setIsDrawing] = useState(false);
       const [brushColor, setBrushColor] = useState('#000000');
       const [brushSize, setBrushSize] = useState(5);
-      const [tool, setTool] = useState('brush'); // brush, eraser
+      const [tool, setTool] = useState('brush');
       const [drawings, setDrawings] = useState([]);
       const [currentDrawingName, setCurrentDrawingName] = useState('');
       const [showSaved, setShowSaved] = useState(false);
-
-      const colors = ['#000000', '#e24b4a', '#1D9E75', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#6b7280', '#ffffff'];
+      const [syncing, setSyncing] = useState(null);
+      const [loading, setLoading] = useState(true);
+      const firestore = useFirestore(userId);
+      const colors = ['#000000','#e24b4a','#1D9E75','#3b82f6','#f59e0b','#8b5cf6','#ec4899','#6b7280','#ffffff'];
 
       useEffect(() => {
-        const saved = localStorage.getItem('diary_drawings');
-        if (saved) setDrawings(JSON.parse(saved));
-        
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
+        (async () => { try { setDrawings(await firestore.loadDrawings()); } catch(e) { console.error(e); } setLoading(false); })();
+        const c = canvasRef.current;
+        if (c) { const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
       }, []);
 
-      const startDrawing = (e) => {
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
-        const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        setIsDrawing(true);
+      const startDrawing = (e) => { const c = canvasRef.current; const r = c.getBoundingClientRect(); const x = (e.clientX || e.touches?.[0]?.clientX) - r.left; const y = (e.clientY || e.touches?.[0]?.clientY) - r.top; const ctx = c.getContext('2d'); ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true); };
+      const draw = (e) => { if (!isDrawing) return; e.preventDefault(); const c = canvasRef.current; const r = c.getBoundingClientRect(); const x = (e.clientX || e.touches?.[0]?.clientX) - r.left; const y = (e.clientY || e.touches?.[0]?.clientY) - r.top; const ctx = c.getContext('2d'); ctx.lineTo(x, y); ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : brushColor; ctx.lineWidth = tool === 'eraser' ? brushSize * 3 : brushSize; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(); };
+      const stopDrawing = () => setIsDrawing(false);
+      const clearCanvas = () => { const c = canvasRef.current; const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); };
+
+      const saveDrawing = async () => {
+        const name = currentDrawingName.trim() || 'Drawing ' + (drawings.length + 1);
+        const img = canvasRef.current.toDataURL('image/png', 0.6);
+        const d = { name, image: img, date: new Date().toLocaleString() };
+        setSyncing('syncing');
+        try { const id = await firestore.saveDrawing(d); setDrawings([{ id, ...d }, ...drawings]); setCurrentDrawingName(''); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); }
+        catch (e) { console.error(e); setSyncing('error'); }
       };
 
-      const draw = (e) => {
-        if (!isDrawing) return;
-        e.preventDefault();
-        
-        const canvas = canvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left;
-        const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top;
-        
-        const ctx = canvas.getContext('2d');
-        ctx.lineTo(x, y);
-        ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : brushColor;
-        ctx.lineWidth = tool === 'eraser' ? brushSize * 3 : brushSize;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.stroke();
-      };
+      const loadDrawing = (d) => { const c = canvasRef.current; const ctx = c.getContext('2d'); const img = new Image(); img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0); }; img.src = d.image; setShowSaved(false); };
 
-      const stopDrawing = () => {
-        setIsDrawing(false);
-      };
+      const handleDelete = async (id) => { setSyncing('syncing'); try { await firestore.deleteDrawing(id); setDrawings(drawings.filter(d => d.id !== id)); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); } catch(e) { setSyncing('error'); } };
+      const downloadDrawing = () => { const link = document.createElement('a'); link.download = (currentDrawingName || 'my-drawing') + '.png'; link.href = canvasRef.current.toDataURL('image/png'); link.click(); };
 
-      const clearCanvas = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      };
-
-      const saveDrawing = () => {
-        const name = currentDrawingName.trim() || `Drawing ${drawings.length + 1}`;
-        const canvas = canvasRef.current;
-        const imageData = canvas.toDataURL('image/png');
-        
-        const newDrawing = {
-          id: Date.now(),
-          name,
-          image: imageData,
-          date: new Date().toLocaleString()
-        };
-        
-        const updated = [newDrawing, ...drawings];
-        setDrawings(updated);
-        localStorage.setItem('diary_drawings', JSON.stringify(updated));
-        setCurrentDrawingName('');
-        alert('Drawing saved! ✨');
-      };
-
-      const loadDrawing = (drawing) => {
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
-        const img = new Image();
-        img.onload = () => {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0);
-        };
-        img.src = drawing.image;
-        setShowSaved(false);
-      };
-
-      const deleteDrawing = (id) => {
-        const updated = drawings.filter(d => d.id !== id);
-        setDrawings(updated);
-        localStorage.setItem('diary_drawings', JSON.stringify(updated));
-      };
-
-      const downloadDrawing = () => {
-        const canvas = canvasRef.current;
-        const link = document.createElement('a');
-        link.download = `${currentDrawingName || 'my-drawing'}.png`;
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-      };
+      if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 40, height: 40 }}></div><p style={{ marginTop: '1rem', color: darkMode ? '#aaa' : '#888' }}>Loading drawings...</p></div>;
 
       return (
         <div>
+          <SyncIndicator status={syncing} />
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h2 style={{ fontSize: '1.25rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>
-              🎨 Drawing Pad
-            </h2>
-            <button
-              onClick={() => setShowSaved(!showSaved)}
-              style={{
-                padding: '8px 16px',
-                background: showSaved ? '#1D9E75' : 'transparent',
-                color: showSaved ? 'white' : (darkMode ? '#ccc' : '#5f5e5a'),
-                border: `1px solid ${showSaved ? '#1D9E75' : (darkMode ? '#555' : '#d3d1c7')}`,
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px'
-              }}
-            >
-              {showSaved ? '✏️ Draw' : '📁 Saved (' + drawings.length + ')'}
-            </button>
+            <h2 style={{ fontSize: '1.25rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>🎨 Drawing Pad</h2>
+            <button onClick={() => setShowSaved(!showSaved)} style={{ padding: '8px 16px', background: showSaved ? '#1D9E75' : 'transparent', color: showSaved ? 'white' : (darkMode ? '#ccc' : '#5f5e5a'), border: '1px solid ' + (showSaved ? '#1D9E75' : (darkMode ? '#555' : '#d3d1c7')), borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}>{showSaved ? '✏️ Draw' : '📁 Saved (' + drawings.length + ')'}</button>
           </div>
-
           {showSaved ? (
-            <div>
-              {drawings.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '3rem', color: darkMode ? '#aaa' : '#888' }}>
-                  <p style={{ fontSize: '48px', marginBottom: '1rem' }}>🎨</p>
-                  <p>No saved drawings yet. Start creating!</p>
+            drawings.length === 0 ? <div style={{ textAlign: 'center', padding: '3rem', color: darkMode ? '#aaa' : '#888' }}><p style={{ fontSize: '48px', marginBottom: '1rem' }}>🎨</p><p>No saved drawings yet.</p></div>
+            : <div className="saved-drawings-grid">{drawings.map(d => (
+              <div key={d.id} className="saved-drawing-item" style={{ background: darkMode ? '#333' : '#fff' }}>
+                <img src={d.image} alt={d.name} onClick={() => loadDrawing(d)} />
+                <div style={{ padding: '10px' }}>
+                  <p style={{ fontSize: '13px', fontWeight: '500', color: darkMode ? '#f5f5f5' : '#2c2c2a', marginBottom: '4px' }}>{d.name}</p>
+                  <p style={{ fontSize: '11px', color: darkMode ? '#888' : '#aaa', marginBottom: '8px' }}>{d.date}</p>
+                  <button onClick={() => handleDelete(d.id)} style={{ padding: '4px 8px', background: '#e24b4a', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>Delete</button>
                 </div>
-              ) : (
-                <div className="saved-drawings-grid">
-                  {drawings.map(drawing => (
-                    <div key={drawing.id} className="saved-drawing-item" style={{ background: darkMode ? '#333' : '#fff' }}>
-                      <img src={drawing.image} alt={drawing.name} onClick={() => loadDrawing(drawing)} />
-                      <div style={{ padding: '10px' }}>
-                        <p style={{ fontSize: '13px', fontWeight: '500', color: darkMode ? '#f5f5f5' : '#2c2c2a', marginBottom: '4px' }}>
-                          {drawing.name}
-                        </p>
-                        <p style={{ fontSize: '11px', color: darkMode ? '#888' : '#aaa', marginBottom: '8px' }}>
-                          {drawing.date}
-                        </p>
-                        <button
-                          onClick={() => deleteDrawing(drawing.id)}
-                          style={{
-                            padding: '4px 8px',
-                            background: '#e24b4a',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '11px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+              </div>
+            ))}</div>
           ) : (
             <div className="drawing-canvas-container">
               <div className="drawing-toolbar" style={{ background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}>
                 <div className="color-picker-container">
-                  {colors.map(color => (
-                    <div
-                      key={color}
-                      className={`color-swatch ${brushColor === color && tool === 'brush' ? 'active' : ''}`}
-                      style={{ backgroundColor: color, border: color === '#ffffff' ? '1px solid #ccc' : 'none' }}
-                      onClick={() => { setBrushColor(color); setTool('brush'); }}
-                    />
-                  ))}
-                  <input
-                    type="color"
-                    value={brushColor}
-                    onChange={(e) => { setBrushColor(e.target.value); setTool('brush'); }}
-                    style={{ width: '28px', height: '28px', border: 'none', cursor: 'pointer' }}
-                  />
+                  {colors.map(c => <div key={c} className={'color-swatch ' + (brushColor === c && tool === 'brush' ? 'active' : '')} style={{ backgroundColor: c, border: c === '#ffffff' ? '1px solid #ccc' : 'none' }} onClick={() => { setBrushColor(c); setTool('brush'); }} />)}
+                  <input type="color" value={brushColor} onChange={(e) => { setBrushColor(e.target.value); setTool('brush'); }} style={{ width: 28, height: 28, border: 'none', cursor: 'pointer' }} />
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', color: darkMode ? '#ccc' : '#666' }}>Size:</span>
-                  <input
-                    type="range"
-                    min="1"
-                    max="30"
-                    value={brushSize}
-                    onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                    className="brush-size-slider"
-                  />
-                  <span style={{ fontSize: '12px', color: darkMode ? '#ccc' : '#666', minWidth: '20px' }}>{brushSize}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 12, color: darkMode ? '#ccc' : '#666' }}>Size:</span>
+                  <input type="range" min="1" max="30" value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="brush-size-slider" />
+                  <span style={{ fontSize: 12, color: darkMode ? '#ccc' : '#666', minWidth: 20 }}>{brushSize}</span>
                 </div>
-
-                <button
-                  onClick={() => setTool('brush')}
-                  style={{
-                    padding: '6px 12px',
-                    background: tool === 'brush' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'),
-                    color: tool === 'brush' ? 'white' : (darkMode ? '#ccc' : '#333'),
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px'
-                  }}
-                >
-                  ✏️ Brush
-                </button>
-
-                <button
-                  onClick={() => setTool('eraser')}
-                  style={{
-                    padding: '6px 12px',
-                    background: tool === 'eraser' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'),
-                    color: tool === 'eraser' ? 'white' : (darkMode ? '#ccc' : '#333'),
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px'
-                  }}
-                >
-                  🧹 Eraser
-                </button>
-
-                <button
-                  onClick={clearCanvas}
-                  style={{
-                    padding: '6px 12px',
-                    background: darkMode ? '#444' : '#f0f0f0',
-                    color: darkMode ? '#ccc' : '#333',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px'
-                  }}
-                >
-                  🗑️ Clear
-                </button>
+                <button onClick={() => setTool('brush')} style={{ padding: '6px 12px', background: tool === 'brush' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'brush' ? 'white' : (darkMode ? '#ccc' : '#333'), border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>✏️ Brush</button>
+                <button onClick={() => setTool('eraser')} style={{ padding: '6px 12px', background: tool === 'eraser' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'eraser' ? 'white' : (darkMode ? '#ccc' : '#333'), border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>🧹 Eraser</button>
+                <button onClick={clearCanvas} style={{ padding: '6px 12px', background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>🗑️ Clear</button>
               </div>
-
-              <canvas
-                ref={canvasRef}
-                width={760}
-                height={450}
-                style={{ display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }}
-                onMouseDown={startDrawing}
-                onMouseMove={draw}
-                onMouseUp={stopDrawing}
-                onMouseLeave={stopDrawing}
-                onTouchStart={startDrawing}
-                onTouchMove={draw}
-                onTouchEnd={stopDrawing}
-              />
-
-              <div style={{ 
-                padding: '15px', 
-                display: 'flex', 
-                gap: '10px', 
-                alignItems: 'center',
-                background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                borderTop: `1px solid ${darkMode ? '#444' : '#e0ddd5'}`
-              }}>
-                <input
-                  type="text"
-                  placeholder="Drawing name..."
-                  value={currentDrawingName}
-                  onChange={(e) => setCurrentDrawingName(e.target.value)}
-                  style={{
-                    flex: 1,
-                    padding: '8px 12px',
-                    border: `1px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                    borderRadius: '6px',
-                    background: darkMode ? '#333' : '#fff',
-                    color: darkMode ? '#f5f5f5' : '#2c2c2a',
-                    fontSize: '14px'
-                  }}
-                />
-                <button
-                  onClick={saveDrawing}
-                  style={{
-                    padding: '8px 20px',
-                    background: '#1D9E75',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500'
-                  }}
-                >
-                  💾 Save
-                </button>
-                <button
-                  onClick={downloadDrawing}
-                  style={{
-                    padding: '8px 16px',
-                    background: darkMode ? '#444' : '#f0f0f0',
-                    color: darkMode ? '#ccc' : '#333',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                  }}
-                >
-                  ⬇️ Download
-                </button>
+              <canvas ref={canvasRef} width={760} height={450} style={{ display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
+              <div style={{ padding: 15, display: 'flex', gap: 10, alignItems: 'center', background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderTop: '1px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
+                <input type="text" placeholder="Drawing name..." value={currentDrawingName} onChange={e => setCurrentDrawingName(e.target.value)} style={{ flex: 1, padding: '8px 12px', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, background: darkMode ? '#333' : '#fff', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14 }} />
+                <button onClick={saveDrawing} style={{ padding: '8px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>💾 Save</button>
+                <button onClick={downloadDrawing} style={{ padding: '8px 16px', background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>⬇️ Download</button>
               </div>
             </div>
           )}
@@ -555,262 +263,103 @@
       );
     }
 
-    // ==================== BOOK READER COMPONENT ====================
-    function BookReader({ darkMode }) {
+    // ==================== BOOK READER ====================
+    function BookReader({ darkMode, userId }) {
       const [books, setBooks] = useState([]);
       const [currentBook, setCurrentBook] = useState(null);
       const [currentPage, setCurrentPage] = useState(0);
       const [totalPages, setTotalPages] = useState(0);
-      const [pdfDoc, setPdfDoc] = useState(null);
       const [pageTexts, setPageTexts] = useState([]);
       const [fontFamily, setFontFamily] = useState('Merriweather');
       const [fontSize, setFontSize] = useState(16);
       const [isFlipping, setIsFlipping] = useState(false);
       const [flipDirection, setFlipDirection] = useState('');
+      const [loading, setLoading] = useState(true);
+      const [syncing, setSyncing] = useState(null);
+      const [importing, setImporting] = useState(false);
       const fileInputRef = useRef(null);
+      const firestore = useFirestore(userId);
+      const fonts = [{ name: 'Merriweather', label: 'Merriweather' },{ name: 'Crimson Text', label: 'Crimson Text' },{ name: 'Libre Baskerville', label: 'Libre Baskerville' },{ name: 'EB Garamond', label: 'EB Garamond' },{ name: 'Lora', label: 'Lora' },{ name: 'Source Serif Pro', label: 'Source Serif' },{ name: 'Georgia', label: 'Georgia' },{ name: 'Times New Roman', label: 'Times New Roman' }];
 
-      const fonts = [
-        { name: 'Merriweather', label: 'Merriweather' },
-        { name: 'Crimson Text', label: 'Crimson Text' },
-        { name: 'Libre Baskerville', label: 'Libre Baskerville' },
-        { name: 'EB Garamond', label: 'EB Garamond' },
-        { name: 'Lora', label: 'Lora' },
-        { name: 'Source Serif Pro', label: 'Source Serif' },
-        { name: 'Georgia', label: 'Georgia' },
-        { name: 'Times New Roman', label: 'Times New Roman' }
-      ];
-
-      useEffect(() => {
-        const saved = localStorage.getItem('diary_books');
-        if (saved) setBooks(JSON.parse(saved));
-      }, []);
+      useEffect(() => { (async () => { try { setBooks(await firestore.loadBooks()); } catch(e) { console.error(e); } setLoading(false); })(); }, []);
 
       const handleFileUpload = async (e) => {
         const file = e.target.files[0];
-        if (!file || file.type !== 'application/pdf') {
-          alert('Please select a PDF file');
-          return;
-        }
-
+        if (!file || file.type !== 'application/pdf') { alert('Please select a PDF file'); return; }
+        setImporting(true);
         const reader = new FileReader();
-        reader.onload = async (event) => {
+        reader.onload = async (ev) => {
           try {
-            const typedArray = new Uint8Array(event.target.result);
-            const pdf = await window.pdfjsLib.getDocument(typedArray).promise;
-            
-            // Extract text from all pages
+            const pdf = await window.pdfjsLib.getDocument(new Uint8Array(ev.target.result)).promise;
             const texts = [];
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i);
-              const textContent = await page.getTextContent();
-              const text = textContent.items.map(item => item.str).join(' ');
-              texts.push(text);
-            }
-
-            const bookData = {
-              id: Date.now(),
-              name: file.name.replace('.pdf', ''),
-              totalPages: pdf.numPages,
-              texts: texts,
-              lastPage: 0,
-              addedDate: new Date().toLocaleString()
-            };
-
-            const updated = [bookData, ...books];
-            setBooks(updated);
-            localStorage.setItem('diary_books', JSON.stringify(updated));
-            
-            // Open the book
-            openBook(bookData);
-          } catch (error) {
-            console.error('Error loading PDF:', error);
-            alert('Error loading PDF. Please try another file.');
-          }
+            for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); const tc = await pg.getTextContent(); texts.push(tc.items.map(it => it.str).join(' ')); }
+            const bookData = { name: file.name.replace('.pdf', ''), totalPages: pdf.numPages, texts, lastPage: 0, addedDate: new Date().toLocaleString() };
+            setSyncing('syncing');
+            const id = await firestore.saveBook(bookData);
+            setBooks([{ id, name: bookData.name, totalPages: bookData.totalPages, lastPage: 0, addedDate: bookData.addedDate }, ...books]);
+            setSyncing('synced'); setTimeout(() => setSyncing(null), 2000);
+          } catch (err) { console.error(err); alert('Error loading PDF.'); setSyncing('error'); }
+          setImporting(false);
         };
-        reader.readAsArrayBuffer(file);
-        e.target.value = '';
+        reader.readAsArrayBuffer(file); e.target.value = '';
       };
 
-      const openBook = (book) => {
-        setCurrentBook(book);
-        setPageTexts(book.texts);
-        setTotalPages(book.totalPages);
-        setCurrentPage(book.lastPage || 0);
+      const openBook = async (book) => {
+        setLoading(true);
+        try { const texts = await firestore.loadBookPages(book.id); setCurrentBook(book); setPageTexts(texts); setTotalPages(book.totalPages); setCurrentPage(book.lastPage || 0); }
+        catch(e) { console.error(e); alert('Error loading book.'); }
+        setLoading(false);
       };
 
-      const closeBook = () => {
-        // Save reading progress
-        if (currentBook) {
-          const updated = books.map(b => 
-            b.id === currentBook.id ? { ...b, lastPage: currentPage } : b
-          );
-          setBooks(updated);
-          localStorage.setItem('diary_books', JSON.stringify(updated));
-        }
-        setCurrentBook(null);
-        setPageTexts([]);
+      const closeBook = async () => {
+        if (currentBook) { try { await firestore.updateBookProgress(currentBook.id, currentPage); setBooks(books.map(b => b.id === currentBook.id ? { ...b, lastPage: currentPage } : b)); } catch(e) {} }
+        setCurrentBook(null); setPageTexts([]);
       };
 
-      const deleteBook = (id) => {
-        const updated = books.filter(b => b.id !== id);
-        setBooks(updated);
-        localStorage.setItem('diary_books', JSON.stringify(updated));
-      };
+      const handleDelete = async (id) => { setSyncing('syncing'); try { await firestore.deleteBook(id); setBooks(books.filter(b => b.id !== id)); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); } catch(e) { setSyncing('error'); } };
 
-      const turnPage = (direction) => {
+      const turnPage = (dir) => {
         if (isFlipping) return;
-        
-        if (direction === 'next' && currentPage < totalPages - 2) {
-          setFlipDirection('next');
-          setIsFlipping(true);
-          setTimeout(() => {
-            setCurrentPage(prev => Math.min(prev + 2, totalPages - 1));
-            setIsFlipping(false);
-          }, 400);
-        } else if (direction === 'prev' && currentPage > 0) {
-          setFlipDirection('prev');
-          setIsFlipping(true);
-          setTimeout(() => {
-            setCurrentPage(prev => Math.max(prev - 2, 0));
-            setIsFlipping(false);
-          }, 400);
-        }
+        if (dir === 'next' && currentPage < totalPages - 2) { setFlipDirection('next'); setIsFlipping(true); setTimeout(() => { setCurrentPage(p => Math.min(p + 2, totalPages - 1)); setIsFlipping(false); }, 400); }
+        else if (dir === 'prev' && currentPage > 0) { setFlipDirection('prev'); setIsFlipping(true); setTimeout(() => { setCurrentPage(p => Math.max(p - 2, 0)); setIsFlipping(false); }, 400); }
       };
 
-      // Book Library View
+      if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 40, height: 40 }}></div><p style={{ marginTop: '1rem', color: darkMode ? '#aaa' : '#888' }}>{currentBook ? 'Loading book...' : 'Loading library...'}</p></div>;
+
       if (!currentBook) {
         return (
           <div>
+            <SyncIndicator status={syncing} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>
-                📚 My Book Library
-              </h2>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  padding: '10px 20px',
-                  background: '#1D9E75',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500'
-                }}
-              >
-                📄 Import PDF Book
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                onChange={handleFileUpload}
-                style={{ display: 'none' }}
-              />
+              <h2 style={{ fontSize: '1.25rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>📚 My Book Library</h2>
+              <button onClick={() => fileInputRef.current?.click()} disabled={importing} style={{ padding: '10px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 500, opacity: importing ? 0.6 : 1 }}>{importing ? '⏳ Importing...' : '📄 Import PDF Book'}</button>
+              <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileUpload} style={{ display: 'none' }} />
             </div>
-
             {books.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '3rem', color: darkMode ? '#aaa' : '#888' }}>
-                <p style={{ fontSize: '64px', marginBottom: '1rem' }}>📚</p>
-                <p style={{ fontSize: '16px', marginBottom: '0.5rem' }}>Your library is empty</p>
-                <p style={{ fontSize: '14px' }}>Import a PDF book to start reading!</p>
+                <p style={{ fontSize: 64, marginBottom: '1rem' }}>📚</p>
+                <p style={{ fontSize: 16, marginBottom: '0.5rem' }}>Your library is empty</p>
+                <p style={{ fontSize: 14 }}>Import a PDF book to start reading!</p>
+                <p style={{ fontSize: 12, marginTop: '1rem', color: '#1D9E75' }}>☁️ Books sync across all your devices</p>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1.5rem' }}>
                 {books.map(book => (
-                  <div
-                    key={book.id}
-                    style={{
-                      background: darkMode ? '#333' : '#fff',
-                      borderRadius: '12px',
-                      overflow: 'hidden',
-                      border: `1px solid ${darkMode ? '#444' : '#e0ddd5'}`,
-                      transition: 'all 0.2s',
-                      cursor: 'pointer'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.transform = 'translateY(-4px)';
-                      e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.transform = 'translateY(0)';
-                      e.currentTarget.style.boxShadow = 'none';
-                    }}
-                  >
-                    <div
-                      onClick={() => openBook(book)}
-                      style={{
-                        height: '160px',
-                        background: `linear-gradient(135deg, #8B4513 0%, #A0522D 50%, #654321 100%)`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        position: 'relative'
-                      }}
-                    >
-                      <div style={{
-                        background: 'rgba(255,255,255,0.9)',
-                        padding: '15px 10px',
-                        borderRadius: '4px',
-                        textAlign: 'center',
-                        maxWidth: '80%'
-                      }}>
-                        <p style={{ fontSize: '12px', fontWeight: '600', color: '#333', wordBreak: 'break-word' }}>
-                          {book.name}
-                        </p>
+                  <div key={book.id} style={{ background: darkMode ? '#333' : '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid ' + (darkMode ? '#444' : '#e0ddd5'), transition: 'all 0.2s', cursor: 'pointer' }}
+                    onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'; }}
+                    onMouseOut={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
+                    <div onClick={() => openBook(book)} style={{ height: 160, background: 'linear-gradient(135deg, #8B4513 0%, #A0522D 50%, #654321 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                      <div style={{ background: 'rgba(255,255,255,0.9)', padding: '15px 10px', borderRadius: 4, textAlign: 'center', maxWidth: '80%' }}>
+                        <p style={{ fontSize: 12, fontWeight: 600, color: '#333', wordBreak: 'break-word' }}>{book.name}</p>
                       </div>
-                      {book.lastPage > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '8px',
-                          right: '8px',
-                          background: '#1D9E75',
-                          color: 'white',
-                          padding: '2px 8px',
-                          borderRadius: '10px',
-                          fontSize: '10px'
-                        }}>
-                          Page {book.lastPage + 1}
-                        </div>
-                      )}
+                      {book.lastPage > 0 && <div style={{ position: 'absolute', top: 8, right: 8, background: '#1D9E75', color: 'white', padding: '2px 8px', borderRadius: 10, fontSize: 10 }}>Page {book.lastPage + 1}</div>}
                     </div>
-                    <div style={{ padding: '12px' }}>
-                      <p style={{ fontSize: '14px', fontWeight: '500', color: darkMode ? '#f5f5f5' : '#2c2c2a', marginBottom: '4px' }}>
-                        {book.name.length > 20 ? book.name.substring(0, 20) + '...' : book.name}
-                      </p>
-                      <p style={{ fontSize: '11px', color: darkMode ? '#888' : '#aaa', marginBottom: '8px' }}>
-                        {book.totalPages} pages
-                      </p>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openBook(book); }}
-                          style={{
-                            flex: 1,
-                            padding: '6px',
-                            background: '#1D9E75',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          📖 Read
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deleteBook(book.id); }}
-                          style={{
-                            padding: '6px 10px',
-                            background: '#e24b4a',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          🗑️
-                        </button>
+                    <div style={{ padding: 12 }}>
+                      <p style={{ fontSize: 14, fontWeight: 500, color: darkMode ? '#f5f5f5' : '#2c2c2a', marginBottom: 4 }}>{book.name.length > 20 ? book.name.substring(0, 20) + '...' : book.name}</p>
+                      <p style={{ fontSize: 11, color: darkMode ? '#888' : '#aaa', marginBottom: 8 }}>{book.totalPages} pages</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={e => { e.stopPropagation(); openBook(book); }} style={{ flex: 1, padding: 6, background: '#1D9E75', color: 'white', border: 'none', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}>📖 Read</button>
+                        <button onClick={e => { e.stopPropagation(); handleDelete(book.id); }} style={{ padding: '6px 10px', background: '#e24b4a', color: 'white', border: 'none', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}>🗑️</button>
                       </div>
                     </div>
                   </div>
@@ -821,207 +370,55 @@
         );
       }
 
-      // Book Reading View
-      const leftPageIndex = currentPage;
-      const rightPageIndex = currentPage + 1;
-      const leftPageText = pageTexts[leftPageIndex] || '';
-      const rightPageText = pageTexts[rightPageIndex] || '';
-
+      const li = currentPage, ri = currentPage + 1;
       return (
         <div>
-          {/* Reading Controls */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '1.5rem',
-            flexWrap: 'wrap',
-            gap: '1rem'
-          }}>
-            <button
-              onClick={closeBook}
-              style={{
-                padding: '8px 16px',
-                background: 'transparent',
-                color: darkMode ? '#ccc' : '#5f5e5a',
-                border: `1px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '13px'
-              }}
-            >
-              ← Back to Library
-            </button>
-            
-            <h3 style={{ 
-              fontSize: '1rem', 
-              color: darkMode ? '#f5f5f5' : '#2c2c2a',
-              flex: 1,
-              textAlign: 'center'
-            }}>
-              📖 {currentBook.name}
-            </h3>
-
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <select
-                value={fontFamily}
-                onChange={(e) => setFontFamily(e.target.value)}
-                style={{
-                  padding: '6px 10px',
-                  border: `1px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                  borderRadius: '4px',
-                  background: darkMode ? '#333' : '#fff',
-                  color: darkMode ? '#f5f5f5' : '#2c2c2a',
-                  fontSize: '12px',
-                  cursor: 'pointer'
-                }}
-              >
-                {fonts.map(f => (
-                  <option key={f.name} value={f.name} style={{ fontFamily: f.name }}>
-                    {f.label}
-                  </option>
-                ))}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <button onClick={closeBook} style={{ padding: '8px 16px', background: 'transparent', color: darkMode ? '#ccc' : '#5f5e5a', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>← Back to Library</button>
+            <h3 style={{ fontSize: '1rem', color: darkMode ? '#f5f5f5' : '#2c2c2a', flex: 1, textAlign: 'center' }}>📖 {currentBook.name}</h3>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ padding: '6px 10px', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 4, background: darkMode ? '#333' : '#fff', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 12, cursor: 'pointer' }}>
+                {fonts.map(f => <option key={f.name} value={f.name}>{f.label}</option>)}
               </select>
-
-              <button
-                onClick={() => setFontSize(s => Math.max(12, s - 2))}
-                style={{
-                  width: '30px',
-                  height: '30px',
-                  background: darkMode ? '#444' : '#f0f0f0',
-                  color: darkMode ? '#ccc' : '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '16px'
-                }}
-              >
-                A-
-              </button>
-              <span style={{ fontSize: '12px', color: darkMode ? '#aaa' : '#666' }}>{fontSize}px</span>
-              <button
-                onClick={() => setFontSize(s => Math.min(28, s + 2))}
-                style={{
-                  width: '30px',
-                  height: '30px',
-                  background: darkMode ? '#444' : '#f0f0f0',
-                  color: darkMode ? '#ccc' : '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '16px'
-                }}
-              >
-                A+
-              </button>
+              <button onClick={() => setFontSize(s => Math.max(12, s - 2))} style={{ width: 30, height: 30, background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>A-</button>
+              <span style={{ fontSize: 12, color: darkMode ? '#aaa' : '#666' }}>{fontSize}px</span>
+              <button onClick={() => setFontSize(s => Math.min(28, s + 2))} style={{ width: 30, height: 30, background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>A+</button>
             </div>
           </div>
-
-          {/* Book */}
           <div className="book-container">
-            <div className="book" style={{
-              transform: isFlipping ? (flipDirection === 'next' ? 'rotateY(-5deg)' : 'rotateY(5deg)') : 'rotateY(0deg)',
-              transition: 'transform 0.4s ease-in-out'
-            }}>
-              {/* Left Page */}
-              <div className="page-left" style={{
-                opacity: isFlipping && flipDirection === 'prev' ? 0.7 : 1,
-                transition: 'opacity 0.3s'
-              }}>
-                <div style={{
-                  fontFamily: fontFamily,
-                  fontSize: `${fontSize}px`,
-                  lineHeight: '1.8',
-                  color: '#333',
-                  textAlign: 'justify',
-                  hyphens: 'auto'
-                }}>
-                  {leftPageText || (
-                    <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>
-                      {currentPage === 0 ? 'Begin your reading journey...' : 'Page content unavailable'}
-                    </p>
-                  )}
+            <div className="book" style={{ transform: isFlipping ? (flipDirection === 'next' ? 'rotateY(-5deg)' : 'rotateY(5deg)') : 'rotateY(0deg)', transition: 'transform 0.4s ease-in-out' }}>
+              <div className="page-left" style={{ opacity: isFlipping && flipDirection === 'prev' ? 0.7 : 1, transition: 'opacity 0.3s' }}>
+                <div style={{ fontFamily, fontSize: fontSize + 'px', lineHeight: '1.8', color: '#333', textAlign: 'justify', hyphens: 'auto' }}>
+                  {pageTexts[li] || <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>{currentPage === 0 ? 'Begin reading...' : 'Page unavailable'}</p>}
                 </div>
-                <span className="page-number">{leftPageIndex + 1}</span>
+                <span className="page-number">{li + 1}</span>
               </div>
-
-              {/* Right Page */}
-              <div className="page-right" style={{
-                opacity: isFlipping && flipDirection === 'next' ? 0.7 : 1,
-                transition: 'opacity 0.3s'
-              }}>
-                <div style={{
-                  fontFamily: fontFamily,
-                  fontSize: `${fontSize}px`,
-                  lineHeight: '1.8',
-                  color: '#333',
-                  textAlign: 'justify',
-                  hyphens: 'auto'
-                }}>
-                  {rightPageText || (
-                    rightPageIndex < totalPages ? (
-                      <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>
-                        Page content unavailable
-                      </p>
-                    ) : (
-                      <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>
-                        ✨ The End ✨
-                      </p>
-                    )
-                  )}
+              <div className="page-right" style={{ opacity: isFlipping && flipDirection === 'next' ? 0.7 : 1, transition: 'opacity 0.3s' }}>
+                <div style={{ fontFamily, fontSize: fontSize + 'px', lineHeight: '1.8', color: '#333', textAlign: 'justify', hyphens: 'auto' }}>
+                  {pageTexts[ri] || (ri < totalPages ? <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>Page unavailable</p> : <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>✨ The End ✨</p>)}
                 </div>
-                <span className="page-number">{rightPageIndex + 1}</span>
+                <span className="page-number">{ri + 1}</span>
               </div>
-
-              {/* Page Turn Buttons */}
-              <button
-                className="page-turn-btn prev"
-                onClick={() => turnPage('prev')}
-                disabled={currentPage === 0}
-                style={{ opacity: currentPage === 0 ? 0.3 : 1 }}
-              >
-                ◀
-              </button>
-              <button
-                className="page-turn-btn next"
-                onClick={() => turnPage('next')}
-                disabled={currentPage >= totalPages - 2}
-                style={{ opacity: currentPage >= totalPages - 2 ? 0.3 : 1 }}
-              >
-                ▶
-              </button>
+              <button className="page-turn-btn prev" onClick={() => turnPage('prev')} disabled={currentPage === 0} style={{ opacity: currentPage === 0 ? 0.3 : 1 }}>◀</button>
+              <button className="page-turn-btn next" onClick={() => turnPage('next')} disabled={currentPage >= totalPages - 2} style={{ opacity: currentPage >= totalPages - 2 ? 0.3 : 1 }}>▶</button>
             </div>
           </div>
-
-          {/* Page Navigation */}
-          <div style={{
-            textAlign: 'center',
-            marginTop: '1.5rem',
-            color: darkMode ? '#aaa' : '#666'
-          }}>
-            <p style={{ fontSize: '14px', marginBottom: '10px' }}>
-              Pages {leftPageIndex + 1}-{Math.min(rightPageIndex + 1, totalPages)} of {totalPages}
-            </p>
-            <input
-              type="range"
-              min="0"
-              max={Math.max(0, totalPages - 2)}
-              step="2"
-              value={currentPage}
-              onChange={(e) => setCurrentPage(parseInt(e.target.value))}
-              style={{ width: '300px', cursor: 'pointer' }}
-            />
+          <div style={{ textAlign: 'center', marginTop: '1.5rem', color: darkMode ? '#aaa' : '#666' }}>
+            <p style={{ fontSize: 14, marginBottom: 10 }}>Pages {li + 1}-{Math.min(ri + 1, totalPages)} of {totalPages}</p>
+            <input type="range" min="0" max={Math.max(0, totalPages - 2)} step="2" value={currentPage} onChange={e => setCurrentPage(+e.target.value)} style={{ width: 300, cursor: 'pointer' }} />
           </div>
         </div>
       );
     }
 
-    // ==================== MAIN DIARY COMPONENT ====================
+    // ==================== MAIN DIARY ====================
     function DigitalDiary() {
-      const [isLoggedIn, setIsLoggedIn] = useState(false);
+      const [user, setUser] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+      const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
-      const [loginPassword, setLoginPassword] = useState('');
-      const [isFirstTime, setIsFirstTime] = useState(true);
+      const [isSignUp, setIsSignUp] = useState(false);
+      const [authError, setAuthError] = useState('');
       const [entries, setEntries] = useState([]);
       const [currentPage, setCurrentPage] = useState('view');
       const [newEntry, setNewEntry] = useState('');
@@ -1029,471 +426,117 @@
       const [searchQuery, setSearchQuery] = useState('');
       const [darkMode, setDarkMode] = useState(false);
       const [selectedEntry, setSelectedEntry] = useState(null);
+      const [syncing, setSyncing] = useState(null);
+      const [entriesLoading, setEntriesLoading] = useState(true);
 
-      useEffect(() => {
-        const stored = localStorage.getItem('diary_data');
-        const hasPassword = localStorage.getItem('diary_password');
-        if (stored) {
-          setEntries(JSON.parse(stored));
-          setIsFirstTime(false);
-        }
-        if (hasPassword) {
-          setIsFirstTime(false);
-        }
-      }, []);
+      useEffect(() => { const unsub = auth.onAuthStateChanged(u => { setUser(u); setAuthLoading(false); }); return () => unsub(); }, []);
 
-      const handleSetPassword = () => {
-        if (!password || password.length < 4) {
-          alert('Please enter a password (at least 4 characters)');
-          return;
-        }
-        localStorage.setItem('diary_password', password);
-        setIsLoggedIn(true);
-        setPassword('');
-      };
+      const firestore = user ? useFirestore(user.uid) : null;
 
-      const handleLogin = () => {
-        const storedPassword = localStorage.getItem('diary_password');
-        if (loginPassword === storedPassword) {
-          setIsLoggedIn(true);
-          setLoginPassword('');
-        } else {
-          alert('Wrong password');
+      useEffect(() => { if (user && firestore) { (async () => { setEntriesLoading(true); try { setEntries(await firestore.loadEntries()); } catch(e) { console.error(e); } setEntriesLoading(false); })(); } }, [user]);
+
+      const handleAuth = async () => {
+        setAuthError('');
+        if (!email || !password) { setAuthError('Please enter email and password'); return; }
+        if (password.length < 6) { setAuthError('Password must be at least 6 characters'); return; }
+        try {
+          if (isSignUp) await auth.createUserWithEmailAndPassword(email, password);
+          else await auth.signInWithEmailAndPassword(email, password);
+        } catch (e) {
+          const msgs = { 'auth/email-already-in-use': 'Email already registered. Try logging in.', 'auth/invalid-email': 'Invalid email.', 'auth/wrong-password': 'Wrong password.', 'auth/user-not-found': 'No account found. Sign up first.', 'auth/weak-password': 'Password must be at least 6 characters.', 'auth/invalid-credential': 'Invalid email or password.' };
+          setAuthError(msgs[e.code] || e.message);
         }
       };
 
-      const saveEntry = () => {
-        if (!newEntry.trim()) {
-          alert('Please write something');
-          return;
-        }
-        const entry = {
-          id: Date.now(),
-          content: newEntry,
-          mood: entryMood,
-          date: new Date().toLocaleString(),
-        };
-        const updated = [entry, ...entries];
-        setEntries(updated);
-        localStorage.setItem('diary_data', JSON.stringify(updated));
-        setNewEntry('');
-        setEntryMood('neutral');
-        setCurrentPage('view');
+      const handleLogout = async () => { await auth.signOut(); setEntries([]); };
+
+      const saveEntry = async () => {
+        if (!newEntry.trim()) { alert('Please write something'); return; }
+        const entry = { content: newEntry, mood: entryMood, date: new Date().toLocaleString() };
+        setSyncing('syncing');
+        try { const id = await firestore.saveEntry(entry); setEntries([{ id, ...entry }, ...entries]); setNewEntry(''); setEntryMood('neutral'); setCurrentPage('view'); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); }
+        catch (e) { console.error(e); setSyncing('error'); }
       };
 
-      const deleteEntry = (id) => {
-        const updated = entries.filter(e => e.id !== id);
-        setEntries(updated);
-        localStorage.setItem('diary_data', JSON.stringify(updated));
-        setSelectedEntry(null);
+      const deleteEntry = async (id) => {
+        setSyncing('syncing');
+        try { await firestore.deleteEntry(id); setEntries(entries.filter(e => e.id !== id)); setSelectedEntry(null); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); }
+        catch (e) { console.error(e); setSyncing('error'); }
       };
 
-      const filteredEntries = entries.filter(e =>
-        e.content.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-
-      const moods = {
-        happy: '😊',
-        sad: '😔',
-        excited: '🤩',
-        calm: '😌',
-        neutral: '😐',
-        stressed: '😰'
-      };
-
+      const filteredEntries = entries.filter(e => e.content.toLowerCase().includes(searchQuery.toLowerCase()));
+      const moods = { happy: '😊', sad: '😔', excited: '🤩', calm: '😌', neutral: '😐', stressed: '😰' };
       const bgClass = darkMode ? 'dark-mode' : 'light-mode';
 
-      if (!isLoggedIn) {
+      // Loading
+      if (authLoading) return <div className="light-mode" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ textAlign: 'center' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 50, height: 50, margin: '0 auto' }}></div><p style={{ marginTop: '1rem', color: '#888' }}>Loading diary...</p></div></div>;
+
+      // Auth Screen
+      if (!user) {
         return (
-          <div className={bgClass} style={{
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem'
-          }}>
-            <div style={{
-              maxWidth: '400px',
-              width: '100%',
-              background: darkMode ? '#2d2d2d' : '#ffffff',
-              padding: '2.5rem',
-              borderRadius: '16px',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
-            }}>
+          <div className={bgClass} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+            <div style={{ maxWidth: 400, width: '100%', background: darkMode ? '#2d2d2d' : '#ffffff', padding: '2.5rem', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <h1 style={{
-                  fontSize: '2rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                  color: darkMode ? '#f5f5f5' : '#2c2c2a'
-                }}>
-                  📔 My Diary
-                </h1>
-                <p style={{
-                  fontSize: '14px',
-                  color: darkMode ? '#aaa' : '#888'
-                }}>
-                  Your private space for reflection
-                </p>
+                <h1 style={{ fontSize: '2rem', fontWeight: 600, marginBottom: '0.5rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>📔 My Diary</h1>
+                <p style={{ fontSize: 14, color: darkMode ? '#aaa' : '#888' }}>Your private space — synced across all devices ☁️</p>
               </div>
-
-              {isFirstTime ? (
-                <div>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '0.5rem',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    color: darkMode ? '#ccc' : '#5f5e5a'
-                  }}>
-                    Create a password <span style={{ color: '#888' }}>••••••••••</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSetPassword()}
-                    placeholder="At least 4 characters"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                      background: darkMode ? '#333' : '#f9f8f6',
-                      color: darkMode ? '#f5f5f5' : '#2c2c2a',
-                      fontSize: '14px',
-                      marginBottom: '1.5rem',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <button
-                    onClick={handleSetPassword}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: '#1D9E75',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                    onMouseOver={(e) => e.target.style.opacity = '0.9'}
-                    onMouseOut={(e) => e.target.style.opacity = '1'}
-                  >
-                    Create & Login
-                  </button>
-                </div>
-              ) : (
-                <div>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '0.5rem',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    color: darkMode ? '#ccc' : '#5f5e5a'
-                  }}>
-                    Enter your password <span style={{ color: '#888' }}>•••••••••••••••</span>
-                  </label>
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                    placeholder="Your password"
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                      background: darkMode ? '#333' : '#f9f8f6',
-                      color: darkMode ? '#f5f5f5' : '#2c2c2a',
-                      fontSize: '14px',
-                      marginBottom: '1.5rem',
-                      boxSizing: 'border-box'
-                    }}
-                  />
-                  <button
-                    onClick={handleLogin}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      background: '#1D9E75',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                    onMouseOver={(e) => e.target.style.opacity = '0.9'}
-                    onMouseOut={(e) => e.target.style.opacity = '1'}
-                  >
-                    Login
-                  </button>
-                </div>
-              )}
-
-              <button
-                onClick={() => setDarkMode(!darkMode)}
-                style={{
-                  marginTop: '1.5rem',
-                  width: '100%',
-                  padding: '8px',
-                  background: 'transparent',
-                  border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                  borderRadius: '6px',
-                  fontSize: '13px',
-                  color: darkMode ? '#ccc' : '#5f5e5a',
-                  cursor: 'pointer'
-                }}
-              >
-                {darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
-              </button>
+              {authError && <div style={{ padding: 10, marginBottom: '1rem', background: '#fee2e2', color: '#dc2626', borderRadius: 8, fontSize: 13, border: '1px solid #fecaca' }}>{authError}</div>}
+              <div style={{ marginBottom: '1rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: 13, fontWeight: 500, color: darkMode ? '#ccc' : '#5f5e5a' }}>Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAuth()} placeholder="your@email.com" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), background: darkMode ? '#333' : '#f9f8f6', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14, boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: 13, fontWeight: 500, color: darkMode ? '#ccc' : '#5f5e5a' }}>Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleAuth()} placeholder="At least 6 characters" style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), background: darkMode ? '#333' : '#f9f8f6', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14, boxSizing: 'border-box' }} />
+              </div>
+              <button onClick={handleAuth} style={{ width: '100%', padding: 12, background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: '1rem' }} onMouseOver={e => e.target.style.opacity = '0.9'} onMouseOut={e => e.target.style.opacity = '1'}>{isSignUp ? '🚀 Create Account' : '🔐 Login'}</button>
+              <p style={{ textAlign: 'center', fontSize: 13, color: darkMode ? '#aaa' : '#888' }}>
+                {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+                <span onClick={() => { setIsSignUp(!isSignUp); setAuthError(''); }} style={{ color: '#1D9E75', cursor: 'pointer', fontWeight: 500 }}>{isSignUp ? 'Login' : 'Sign Up'}</span>
+              </p>
+              <button onClick={() => setDarkMode(!darkMode)} style={{ marginTop: '1.5rem', width: '100%', padding: 8, background: 'transparent', border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, fontSize: 13, color: darkMode ? '#ccc' : '#5f5e5a', cursor: 'pointer' }}>{darkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
             </div>
           </div>
         );
       }
 
+      // Main App
       return (
         <div className={bgClass} style={{ minHeight: '100vh', padding: '2rem' }}>
-          <div style={{
-            maxWidth: '950px',
-            margin: '0 auto',
-            background: darkMode ? '#2d2d2d' : '#ffffff',
-            borderRadius: '16px',
-            padding: '2rem',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.1)'
-          }}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '2rem',
-              paddingBottom: '1rem',
-              borderBottom: `1px solid ${darkMode ? '#444' : '#e0ddd5'}`
-            }}>
-              <h1 style={{
-                fontSize: '1.5rem',
-                fontWeight: '600',
-                color: darkMode ? '#f5f5f5' : '#2c2c2a'
-              }}>
-                📔 My Diary
-              </h1>
+          <SyncIndicator status={syncing} />
+          <div style={{ maxWidth: 950, margin: '0 auto', background: darkMode ? '#2d2d2d' : '#ffffff', borderRadius: 16, padding: '2rem', boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', paddingBottom: '1rem', borderBottom: '1px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
+              <div>
+                <h1 style={{ fontSize: '1.5rem', fontWeight: 600, color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>📔 My Diary</h1>
+                <p style={{ fontSize: 11, color: darkMode ? '#888' : '#aaa', marginTop: 4 }}>☁️ {user.email}</p>
+              </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  onClick={() => setDarkMode(!darkMode)}
-                  style={{
-                    padding: '8px 12px',
-                    background: 'transparent',
-                    border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: darkMode ? '#ccc' : '#5f5e5a'
-                  }}
-                >
-                  {darkMode ? '☀️' : '🌙'}
-                </button>
-                <button
-                  onClick={() => {
-                    localStorage.clear();
-                    setIsLoggedIn(false);
-                    setEntries([]);
-                  }}
-                  style={{
-                    padding: '8px 12px',
-                    background: 'transparent',
-                    border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                    color: darkMode ? '#ccc' : '#5f5e5a'
-                  }}
-                >
-                  Logout
-                </button>
+                <button onClick={() => setDarkMode(!darkMode)} style={{ padding: '8px 12px', background: 'transparent', border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, fontSize: 13, cursor: 'pointer', color: darkMode ? '#ccc' : '#5f5e5a' }}>{darkMode ? '☀️' : '🌙'}</button>
+                <button onClick={handleLogout} style={{ padding: '8px 12px', background: 'transparent', border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, fontSize: 13, cursor: 'pointer', color: darkMode ? '#ccc' : '#5f5e5a' }}>Logout</button>
               </div>
             </div>
-
-            <div style={{
-              display: 'flex',
-              gap: '0.5rem',
-              marginBottom: '2rem',
-              borderBottom: `1px solid ${darkMode ? '#444' : '#e0ddd5'}`,
-              flexWrap: 'wrap'
-            }}>
-              <button
-                onClick={() => setCurrentPage('view')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: currentPage === 'view' ? `2px solid #1D9E75` : 'none',
-                  color: currentPage === 'view' ? '#1D9E75' : (darkMode ? '#aaa' : '#888'),
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                📔 Entries ({entries.length})
-              </button>
-              <button
-                onClick={() => setCurrentPage('write')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: currentPage === 'write' ? `2px solid #1D9E75` : 'none',
-                  color: currentPage === 'write' ? '#1D9E75' : (darkMode ? '#aaa' : '#888'),
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                ✏️ Write
-              </button>
-              <button
-                onClick={() => setCurrentPage('books')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: currentPage === 'books' ? `2px solid #1D9E75` : 'none',
-                  color: currentPage === 'books' ? '#1D9E75' : (darkMode ? '#aaa' : '#888'),
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                📚 Books
-              </button>
-              <button
-                onClick={() => setCurrentPage('draw')}
-                style={{
-                  padding: '12px 16px',
-                  background: 'transparent',
-                  border: 'none',
-                  borderBottom: currentPage === 'draw' ? `2px solid #1D9E75` : 'none',
-                  color: currentPage === 'draw' ? '#1D9E75' : (darkMode ? '#aaa' : '#888'),
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer'
-                }}
-              >
-                🎨 Draw
-              </button>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', borderBottom: '1px solid ' + (darkMode ? '#444' : '#e0ddd5'), flexWrap: 'wrap' }}>
+              {[{k:'view',l:'📔 Entries',x:' ('+entries.length+')'},{k:'write',l:'✏️ Write'},{k:'books',l:'📚 Books'},{k:'draw',l:'🎨 Draw'}].map(t => (
+                <button key={t.k} onClick={() => setCurrentPage(t.k)} style={{ padding: '12px 16px', background: 'transparent', border: 'none', borderBottom: currentPage === t.k ? '2px solid #1D9E75' : 'none', color: currentPage === t.k ? '#1D9E75' : (darkMode ? '#aaa' : '#888'), fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>{t.l}{t.x || ''}</button>
+              ))}
             </div>
 
             {currentPage === 'write' && (
               <div>
-                <h2 style={{
-                  fontSize: '1.25rem',
-                  marginBottom: '1.5rem',
-                  color: darkMode ? '#f5f5f5' : '#2c2c2a'
-                }}>
-                  Write New Entry
-                </h2>
-                
+                <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>Write New Entry</h2>
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '0.75rem',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    color: darkMode ? '#ccc' : '#5f5e5a'
-                  }}>
-                    How are you feeling?
-                  </label>
+                  <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: 13, fontWeight: 500, color: darkMode ? '#ccc' : '#5f5e5a' }}>How are you feeling?</label>
                   <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {Object.entries(moods).map(([mood, emoji]) => (
-                      <button
-                        key={mood}
-                        onClick={() => setEntryMood(mood)}
-                        style={{
-                          padding: '8px 12px',
-                          background: entryMood === mood ? '#1D9E75' : (darkMode ? '#333' : '#f9f8f6'),
-                          border: `0.5px solid ${entryMood === mood ? '#1D9E75' : (darkMode ? '#555' : '#d3d1c7')}`,
-                          borderRadius: '6px',
-                          fontSize: '16px',
-                          cursor: 'pointer',
-                          color: darkMode ? '#f5f5f5' : '#2c2c2a'
-                        }}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
+                    {Object.entries(moods).map(([m, e]) => <button key={m} onClick={() => setEntryMood(m)} style={{ padding: '8px 12px', background: entryMood === m ? '#1D9E75' : (darkMode ? '#333' : '#f9f8f6'), border: '0.5px solid ' + (entryMood === m ? '#1D9E75' : (darkMode ? '#555' : '#d3d1c7')), borderRadius: 6, fontSize: 16, cursor: 'pointer', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>{e}</button>)}
                   </div>
                 </div>
-
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '0.75rem',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    color: darkMode ? '#ccc' : '#5f5e5a'
-                  }}>
-                    What's on your mind? 📝
-                  </label>
-                  <textarea
-                    value={newEntry}
-                    onChange={(e) => setNewEntry(e.target.value)}
-                    placeholder="Write your thoughts, feelings, or anything you want to remember..."
-                    style={{
-                      width: '100%',
-                      minHeight: '300px',
-                      padding: '12px',
-                      borderRadius: '8px',
-                      border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                      background: darkMode ? '#333' : '#f9f8f6',
-                      color: darkMode ? '#f5f5f5' : '#2c2c2a',
-                      fontSize: '14px',
-                      fontFamily: 'system-ui, -apple-system, sans-serif',
-                      boxSizing: 'border-box',
-                      resize: 'vertical'
-                    }}
-                  />
+                  <label style={{ display: 'block', marginBottom: '0.75rem', fontSize: 13, fontWeight: 500, color: darkMode ? '#ccc' : '#5f5e5a' }}>What's on your mind? 📝</label>
+                  <textarea value={newEntry} onChange={e => setNewEntry(e.target.value)} placeholder="Write your thoughts..." style={{ width: '100%', minHeight: 300, padding: 12, borderRadius: 8, border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), background: darkMode ? '#333' : '#f9f8f6', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14, fontFamily: 'system-ui, sans-serif', boxSizing: 'border-box', resize: 'vertical' }} />
                 </div>
-
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button
-                    onClick={saveEntry}
-                    style={{
-                      flex: 1,
-                      padding: '12px',
-                      background: '#1D9E75',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                    onMouseOver={(e) => e.target.style.opacity = '0.9'}
-                    onMouseOut={(e) => e.target.style.opacity = '1'}
-                  >
-                    Save Entry
-                  </button>
-                  <button
-                    onClick={() => {
-                      setNewEntry('');
-                      setEntryMood('neutral');
-                      setCurrentPage('view');
-                    }}
-                    style={{
-                      padding: '12px 24px',
-                      background: 'transparent',
-                      border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      cursor: 'pointer',
-                      color: darkMode ? '#ccc' : '#5f5e5a'
-                    }}
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={saveEntry} style={{ flex: 1, padding: 12, background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 500, cursor: 'pointer' }}>☁️ Save Entry</button>
+                  <button onClick={() => { setNewEntry(''); setEntryMood('neutral'); setCurrentPage('view'); }} style={{ padding: '12px 24px', background: 'transparent', border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 8, fontSize: 14, cursor: 'pointer', color: darkMode ? '#ccc' : '#5f5e5a' }}>Cancel</button>
                 </div>
               </div>
             )}
@@ -1501,208 +544,48 @@
             {currentPage === 'view' && (
               <>
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <input
-                    type="text"
-                    placeholder="🔍 Search your entries..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      borderRadius: '8px',
-                      border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                      background: darkMode ? '#2d2d2d' : '#ffffff',
-                      color: darkMode ? '#f5f5f5' : '#2c2c2a',
-                      fontSize: '14px',
-                      boxSizing: 'border-box'
-                    }}
-                  />
+                  <input type="text" placeholder="🔍 Search entries..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), background: darkMode ? '#2d2d2d' : '#fff', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14, boxSizing: 'border-box' }} />
                 </div>
-
-                {selectedEntry ? (
-                  <div style={{
-                    background: darkMode ? '#2d2d2d' : '#ffffff',
-                    padding: '2rem',
-                    borderRadius: '12px',
-                    border: `0.5px solid ${darkMode ? '#444' : '#e0ddd5'}`
-                  }}>
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'start',
-                      marginBottom: '1.5rem'
-                    }}>
-                      <div>
-                        <p style={{
-                          fontSize: '12px',
-                          color: darkMode ? '#aaa' : '#888',
-                          margin: 0
-                        }}>
-                          {selectedEntry.date}
-                        </p>
-                        <p style={{ fontSize: '20px', margin: '0.5rem 0 0' }}>
-                          {moods[selectedEntry.mood]}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setSelectedEntry(null)}
-                        style={{
-                          padding: '6px 12px',
-                          background: 'transparent',
-                          border: `0.5px solid ${darkMode ? '#555' : '#d3d1c7'}`,
-                          borderRadius: '6px',
-                          fontSize: '13px',
-                          cursor: 'pointer',
-                          color: darkMode ? '#ccc' : '#5f5e5a'
-                        }}
-                      >
-                        ← Back
-                      </button>
+                {entriesLoading ? <div style={{ textAlign: 'center', padding: '3rem' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 40, height: 40 }}></div><p style={{ marginTop: '1rem', color: darkMode ? '#aaa' : '#888' }}>Loading entries...</p></div>
+                : selectedEntry ? (
+                  <div style={{ background: darkMode ? '#2d2d2d' : '#fff', padding: '2rem', borderRadius: 12, border: '0.5px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1.5rem' }}>
+                      <div><p style={{ fontSize: 12, color: darkMode ? '#aaa' : '#888', margin: 0 }}>{selectedEntry.date}</p><p style={{ fontSize: 20, margin: '0.5rem 0 0' }}>{moods[selectedEntry.mood]}</p></div>
+                      <button onClick={() => setSelectedEntry(null)} style={{ padding: '6px 12px', background: 'transparent', border: '0.5px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, fontSize: 13, cursor: 'pointer', color: darkMode ? '#ccc' : '#5f5e5a' }}>← Back</button>
                     </div>
-                    <p style={{
-                      fontSize: '14px',
-                      lineHeight: '1.7',
-                      whiteSpace: 'pre-wrap',
-                      marginBottom: '1.5rem',
-                      color: darkMode ? '#ddd' : '#444'
-                    }}>
-                      {selectedEntry.content}
-                    </p>
-                    <button
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this entry?')) {
-                          deleteEntry(selectedEntry.id);
-                        }
-                      }}
-                      style={{
-                        padding: '8px 16px',
-                        background: '#e24b4a',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                        cursor: 'pointer'
-                      }}
-                      onMouseOver={(e) => e.target.style.opacity = '0.9'}
-                      onMouseOut={(e) => e.target.style.opacity = '1'}
-                    >
-                      🗑️ Delete Entry
-                    </button>
+                    <p style={{ fontSize: 14, lineHeight: '1.7', whiteSpace: 'pre-wrap', marginBottom: '1.5rem', color: darkMode ? '#ddd' : '#444' }}>{selectedEntry.content}</p>
+                    <button onClick={() => { if (confirm('Delete this entry?')) deleteEntry(selectedEntry.id); }} style={{ padding: '8px 16px', background: '#e24b4a', color: 'white', border: 'none', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>🗑️ Delete Entry</button>
                   </div>
                 ) : (
-                  <div>
-                    {filteredEntries.length === 0 ? (
-                      <div style={{
-                        textAlign: 'center',
-                        padding: '3rem 2rem',
-                        color: darkMode ? '#aaa' : '#888'
-                      }}>
-                        <p style={{ fontSize: '48px', marginBottom: '1rem' }}>📝</p>
-                        <p style={{ marginBottom: '1rem' }}>No entries yet. Start writing your thoughts!</p>
-                        <button
-                          onClick={() => setCurrentPage('write')}
-                          style={{
-                            marginTop: '1rem',
-                            padding: '10px 20px',
-                            background: '#1D9E75',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            fontSize: '14px'
-                          }}
-                        >
-                          Write Your First Entry
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                        {filteredEntries.map((entry) => (
-                          <div
-                            key={entry.id}
-                            onClick={() => setSelectedEntry(entry)}
-                            style={{
-                              background: darkMode ? '#333' : '#faf8f3',
-                              padding: '1.5rem',
-                              borderRadius: '8px',
-                              border: `0.5px solid ${darkMode ? '#444' : '#e0ddd5'}`,
-                              cursor: 'pointer',
-                              transition: 'all 0.2s'
-                            }}
-                            onMouseOver={(e) => {
-                              e.currentTarget.style.borderColor = '#1D9E75';
-                              e.currentTarget.style.transform = 'translateY(-2px)';
-                            }}
-                            onMouseOut={(e) => {
-                              e.currentTarget.style.borderColor = darkMode ? '#444' : '#e0ddd5';
-                              e.currentTarget.style.transform = 'translateY(0)';
-                            }}
-                          >
-                            <div style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'start',
-                              marginBottom: '0.75rem'
-                            }}>
-                              <div>
-                                <p style={{
-                                  fontSize: '12px',
-                                  color: darkMode ? '#aaa' : '#888',
-                                  margin: 0
-                                }}>
-                                  {entry.date}
-                                </p>
-                                <p style={{ fontSize: '18px', margin: '0.5rem 0 0' }}>
-                                  {moods[entry.mood]}
-                                </p>
-                              </div>
-                              <p style={{
-                                fontSize: '12px',
-                                color: darkMode ? '#888' : '#aaa',
-                                margin: 0
-                              }}>
-                                {Math.max(1, Math.ceil(entry.content.length / 200))} min read
-                              </p>
-                            </div>
-                            <p style={{
-                              fontSize: '14px',
-                              lineHeight: '1.6',
-                              color: darkMode ? '#bbb' : '#555',
-                              margin: 0,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 3,
-                              WebkitBoxOrient: 'vertical'
-                            }}>
-                              {entry.content}
-                            </p>
+                  filteredEntries.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '3rem 2rem', color: darkMode ? '#aaa' : '#888' }}>
+                      <p style={{ fontSize: 48, marginBottom: '1rem' }}>📝</p>
+                      <p style={{ marginBottom: '1rem' }}>No entries yet. Start writing!</p>
+                      <button onClick={() => setCurrentPage('write')} style={{ marginTop: '1rem', padding: '10px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>Write Your First Entry</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {filteredEntries.map(entry => (
+                        <div key={entry.id} onClick={() => setSelectedEntry(entry)} style={{ background: darkMode ? '#333' : '#faf8f3', padding: '1.5rem', borderRadius: 8, border: '0.5px solid ' + (darkMode ? '#444' : '#e0ddd5'), cursor: 'pointer', transition: 'all 0.2s' }}
+                          onMouseOver={e => { e.currentTarget.style.borderColor = '#1D9E75'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                          onMouseOut={e => { e.currentTarget.style.borderColor = darkMode ? '#444' : '#e0ddd5'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.75rem' }}>
+                            <div><p style={{ fontSize: 12, color: darkMode ? '#aaa' : '#888', margin: 0 }}>{entry.date}</p><p style={{ fontSize: 18, margin: '0.5rem 0 0' }}>{moods[entry.mood]}</p></div>
+                            <p style={{ fontSize: 12, color: darkMode ? '#888' : '#aaa', margin: 0 }}>{Math.max(1, Math.ceil(entry.content.length / 200))} min read</p>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                          <p style={{ fontSize: 14, lineHeight: '1.6', color: darkMode ? '#bbb' : '#555', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>{entry.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )
                 )}
               </>
             )}
 
-            {currentPage === 'books' && (
-              <BookReader darkMode={darkMode} />
-            )}
-
-            {currentPage === 'draw' && (
-              <DrawingCanvas darkMode={darkMode} />
-            )}
+            {currentPage === 'books' && <BookReader darkMode={darkMode} userId={user.uid} />}
+            {currentPage === 'draw' && <DrawingCanvas darkMode={darkMode} userId={user.uid} />}
           </div>
-          
-          <p style={{
-            textAlign: 'center',
-            marginTop: '2rem',
-            fontSize: '12px',
-            color: darkMode ? '#666' : '#aaa'
-          }}>
-            Your data is stored locally in your browser. 🔒
-          </p>
+          <p style={{ textAlign: 'center', marginTop: '2rem', fontSize: 12, color: darkMode ? '#666' : '#aaa' }}>☁️ Your data is synced across all devices via Firebase. 🔒</p>
         </div>
       );
     }
