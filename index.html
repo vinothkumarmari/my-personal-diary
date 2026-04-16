@@ -19,12 +19,14 @@
     .light-mode { background: linear-gradient(135deg, #f5f3ef 0%, #e8e4dd 100%); color: #2c2c2a; }
     .dark-mode { background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); color: #f5f5f5; }
     .book-container { perspective: 2000px; display: flex; justify-content: center; align-items: center; min-height: 500px; }
+    .book-maximized { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background: #f5f0e6; display: flex; flex-direction: column; }
     .book {
       position: relative; width: 700px; height: 500px; transform-style: preserve-3d; display: flex;
       background: linear-gradient(90deg, #f5f0e6 0%, #fff9f0 50%, #f5f0e6 100%);
       border-radius: 0 8px 8px 0;
       box-shadow: -5px 5px 15px rgba(0,0,0,0.3), inset 0 0 50px rgba(0,0,0,0.05);
     }
+    .book.maximized { width: 100%; height: calc(100vh - 120px); max-width: 1400px; margin: 0 auto; }
     .book::before {
       content: ''; position: absolute; left: 0; top: 0; width: 30px; height: 100%;
       background: linear-gradient(90deg, #8B4513 0%, #A0522D 30%, #8B4513 50%, #654321 100%);
@@ -124,46 +126,33 @@
       const saveBook = async (book, onProgress) => {
         const meta = { name: book.name, totalPages: book.totalPages, lastPage: book.lastPage || 0, addedDate: book.addedDate, addedAt: firebase.firestore.FieldValue.serverTimestamp() };
         const ref = await getCollection('books').add(meta);
-        // Smart chunking: keep each chunk under 900KB to stay within Firestore 1MB limit
-        const chunks = [];
-        let currentChunk = []; let currentSize = 0; let startIdx = 0;
-        for (let i = 0; i < book.texts.length; i++) {
-          const textSize = new Blob([book.texts[i] || '']).size;
-          if (currentSize + textSize > 900000 && currentChunk.length > 0) {
-            chunks.push({ startIndex: startIdx, texts: currentChunk });
-            startIdx = i; currentChunk = [book.texts[i]]; currentSize = textSize;
-          } else { currentChunk.push(book.texts[i]); currentSize += textSize; }
-        }
-        if (currentChunk.length > 0) chunks.push({ startIndex: startIdx, texts: currentChunk });
-        // Batch write chunks (Firestore batch limit = 500 ops)
-        const batchSize = 400;
-        for (let b = 0; b < chunks.length; b += batchSize) {
-          const batch = db.batch();
-          const end = Math.min(b + batchSize, chunks.length);
-          for (let c = b; c < end; c++) {
-            const docRef = getCollection('books').doc(ref.id).collection('pages').doc('chunk_' + chunks[c].startIndex);
-            batch.set(docRef, chunks[c]);
-          }
-          await batch.commit();
-          if (onProgress) onProgress(Math.round((end / chunks.length) * 100));
+        // Store PDF binary as base64 chunks (each < 900KB for Firestore 1MB limit)
+        const base64 = book.pdfBase64;
+        const chunkLen = 700000; // ~700KB per chunk
+        const totalChunks = Math.ceil(base64.length / chunkLen);
+        for (let i = 0; i < totalChunks; i++) {
+          await getCollection('books').doc(ref.id).collection('pdfdata').doc('chunk_' + i).set({
+            index: i, data: base64.slice(i * chunkLen, (i + 1) * chunkLen)
+          });
+          if (onProgress) onProgress(Math.round(((i + 1) / totalChunks) * 100));
         }
         return ref.id;
       };
 
-      const loadBookPages = async (bookId) => {
-        const snap = await getCollection('books').doc(bookId).collection('pages').get();
-        const all = [];
-        snap.docs.sort((a, b) => a.data().startIndex - b.data().startIndex).forEach(doc => {
-          const d = doc.data();
-          d.texts.forEach((t, i) => { all[d.startIndex + i] = t; });
-        });
-        return all;
+      const loadBookPdf = async (bookId) => {
+        const snap = await getCollection('books').doc(bookId).collection('pdfdata').get();
+        const sorted = snap.docs.sort((a, b) => a.data().index - b.data().index);
+        const base64 = sorted.map(doc => doc.data().data).join('');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
       };
 
       const updateBookProgress = async (bookId, lastPage) => { await getCollection('books').doc(bookId).update({ lastPage }); };
 
       const deleteBook = async (bookId) => {
-        const pages = await getCollection('books').doc(bookId).collection('pages').get();
+        const pages = await getCollection('books').doc(bookId).collection('pdfdata').get();
         const batch = db.batch();
         pages.docs.forEach(doc => batch.delete(doc.ref));
         batch.delete(getCollection('books').doc(bookId));
@@ -182,7 +171,7 @@
 
       const deleteDrawing = async (id) => { await getCollection('drawings').doc(id).delete(); };
 
-      return { loadEntries, saveEntry, deleteEntry, loadBooks, saveBook, loadBookPages, updateBookProgress, deleteBook, loadDrawings, saveDrawing, deleteDrawing };
+      return { loadEntries, saveEntry, deleteEntry, loadBooks, saveBook, loadBookPdf, updateBookProgress, deleteBook, loadDrawings, saveDrawing, deleteDrawing };
     }
 
     // ==================== SYNC INDICATOR ====================
@@ -303,6 +292,28 @@
       useEffect(() => { (async () => { try { setBooks(await firestore.loadBooks()); } catch(e) { console.error(e); } setLoading(false); })(); }, []);
 
       const [importProgress, setImportProgress] = useState('');
+      const [isMaximized, setIsMaximized] = useState(false);
+      const [pageImages, setPageImages] = useState({});
+      const [pdfDoc, setPdfDoc] = useState(null);
+
+      const renderPage = async (pdf, pageNum, scale = 1.5) => {
+        const page = await pdf.getPage(pageNum + 1);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width; canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        return canvas.toDataURL('image/jpeg', 0.85);
+      };
+
+      const loadVisiblePages = async (pdf, current) => {
+        const toLoad = [current, current + 1].filter(p => p < pdf.numPages && !pageImages[p]);
+        if (toLoad.length === 0) return;
+        const newImages = { ...pageImages };
+        for (const p of toLoad) { newImages[p] = await renderPage(pdf, p, isMaximized ? 2.0 : 1.5); }
+        setPageImages(newImages);
+      };
+
+      useEffect(() => { if (pdfDoc) loadVisiblePages(pdfDoc, currentPage); }, [currentPage, pdfDoc, isMaximized]);
 
       const handleFileUpload = async (e) => {
         const file = e.target.files[0];
@@ -312,13 +323,15 @@
         reader.onload = async (ev) => {
           try {
             setImportProgress('Parsing PDF...');
-            const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(ev.target.result) }).promise;
-            const texts = [];
-            for (let i = 1; i <= pdf.numPages; i++) {
-              if (i % 50 === 0 || i === pdf.numPages) setImportProgress('Extracting page ' + i + ' of ' + pdf.numPages + '...');
-              const pg = await pdf.getPage(i); const tc = await pg.getTextContent(); texts.push(tc.items.map(it => it.str).join(' '));
-            }
-            const bookData = { name: file.name.replace('.pdf', ''), totalPages: pdf.numPages, texts, lastPage: 0, addedDate: new Date().toLocaleString() };
+            const arrayBuf = ev.target.result;
+            const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(arrayBuf) }).promise;
+            // Convert to base64 for storage
+            const bytes = new Uint8Array(arrayBuf);
+            let binary = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) { binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)); }
+            const pdfBase64 = btoa(binary);
+            const bookData = { name: file.name.replace('.pdf', ''), totalPages: pdf.numPages, pdfBase64, lastPage: 0, addedDate: new Date().toLocaleString() };
             setSyncing('syncing'); setImportProgress('Uploading to cloud...');
             const id = await firestore.saveBook(bookData, (pct) => setImportProgress('Uploading... ' + pct + '%'));
             setBooks([{ id, name: bookData.name, totalPages: bookData.totalPages, lastPage: 0, addedDate: bookData.addedDate }, ...books]);
@@ -332,14 +345,17 @@
 
       const openBook = async (book) => {
         setLoading(true);
-        try { const texts = await firestore.loadBookPages(book.id); setCurrentBook(book); setPageTexts(texts); setTotalPages(book.totalPages); setCurrentPage(book.lastPage || 0); }
-        catch(e) { console.error(e); alert('Error loading book.'); }
+        try {
+          const pdfData = await firestore.loadBookPdf(book.id);
+          const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(pdfData) }).promise;
+          setPdfDoc(pdf); setPageImages({}); setCurrentBook(book); setTotalPages(pdf.numPages); setCurrentPage(book.lastPage || 0);
+        } catch(e) { console.error(e); alert('Error loading book: ' + (e.message || e)); }
         setLoading(false);
       };
 
       const closeBook = async () => {
         if (currentBook) { try { await firestore.updateBookProgress(currentBook.id, currentPage); setBooks(books.map(b => b.id === currentBook.id ? { ...b, lastPage: currentPage } : b)); } catch(e) {} }
-        setCurrentBook(null); setPageTexts([]);
+        setCurrentBook(null); setPdfDoc(null); setPageImages({}); setIsMaximized(false);
       };
 
       const handleDelete = async (id) => { setSyncing('syncing'); try { await firestore.deleteBook(id); setBooks(books.filter(b => b.id !== id)); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); } catch(e) { setSyncing('error'); } };
@@ -397,44 +413,34 @@
       }
 
       const li = currentPage, ri = currentPage + 1;
-      return (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <button onClick={closeBook} style={{ padding: '8px 16px', background: 'transparent', color: darkMode ? '#ccc' : '#5f5e5a', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>← Back to Library</button>
-            <h3 style={{ fontSize: '1rem', color: darkMode ? '#f5f5f5' : '#2c2c2a', flex: 1, textAlign: 'center' }}>📖 {currentBook.name}</h3>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ padding: '6px 10px', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 4, background: darkMode ? '#333' : '#fff', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 12, cursor: 'pointer' }}>
-                {fonts.map(f => <option key={f.name} value={f.name}>{f.label}</option>)}
-              </select>
-              <button onClick={() => setFontSize(s => Math.max(12, s - 2))} style={{ width: 30, height: 30, background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>A-</button>
-              <span style={{ fontSize: 12, color: darkMode ? '#aaa' : '#666' }}>{fontSize}px</span>
-              <button onClick={() => setFontSize(s => Math.min(28, s + 2))} style={{ width: 30, height: 30, background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 16 }}>A+</button>
-            </div>
+      const readerContent = (
+        <div className={isMaximized ? 'book-maximized' : ''} style={isMaximized ? {} : {}}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: isMaximized ? '0.5rem' : '1.5rem', flexWrap: 'wrap', gap: '0.5rem', padding: isMaximized ? '10px 20px' : 0, background: isMaximized ? '#f0ede5' : 'transparent' }}>
+            <button onClick={closeBook} style={{ padding: '8px 16px', background: 'transparent', color: darkMode && !isMaximized ? '#ccc' : '#5f5e5a', border: '1px solid ' + (darkMode && !isMaximized ? '#555' : '#d3d1c7'), borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>← Back</button>
+            <h3 style={{ fontSize: '0.9rem', color: darkMode && !isMaximized ? '#f5f5f5' : '#2c2c2a', flex: 1, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📖 {currentBook.name}</h3>
+            <button onClick={() => { setIsMaximized(!isMaximized); setPageImages({}); }} style={{ padding: '8px 14px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>{isMaximized ? '🗗 Minimize' : '🗖 Maximize'}</button>
           </div>
-          <div className="book-container">
-            <div className="book" style={{ transform: isFlipping ? (flipDirection === 'next' ? 'rotateY(-5deg)' : 'rotateY(5deg)') : 'rotateY(0deg)', transition: 'transform 0.4s ease-in-out' }}>
-              <div className="page-left" style={{ opacity: isFlipping && flipDirection === 'prev' ? 0.7 : 1, transition: 'opacity 0.3s' }}>
-                <div style={{ fontFamily, fontSize: fontSize + 'px', lineHeight: '1.8', color: '#333', textAlign: 'justify', hyphens: 'auto' }}>
-                  {pageTexts[li] || <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>{currentPage === 0 ? 'Begin reading...' : 'Page unavailable'}</p>}
-                </div>
+          <div className="book-container" style={isMaximized ? { flex: 1, minHeight: 0 } : {}}>
+            <div className={'book' + (isMaximized ? ' maximized' : '')} style={{ transform: isFlipping ? (flipDirection === 'next' ? 'rotateY(-5deg)' : 'rotateY(5deg)') : 'rotateY(0deg)', transition: 'transform 0.4s ease-in-out' }}>
+              <div className="page-left" style={{ opacity: isFlipping && flipDirection === 'prev' ? 0.7 : 1, transition: 'opacity 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {pageImages[li] ? <img src={pageImages[li]} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt={'Page ' + (li+1)} /> : <p style={{ color: '#888', fontStyle: 'italic' }}>Loading page {li + 1}...</p>}
                 <span className="page-number">{li + 1}</span>
               </div>
-              <div className="page-right" style={{ opacity: isFlipping && flipDirection === 'next' ? 0.7 : 1, transition: 'opacity 0.3s' }}>
-                <div style={{ fontFamily, fontSize: fontSize + 'px', lineHeight: '1.8', color: '#333', textAlign: 'justify', hyphens: 'auto' }}>
-                  {pageTexts[ri] || (ri < totalPages ? <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>Page unavailable</p> : <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center', marginTop: '40%' }}>✨ The End ✨</p>)}
-                </div>
-                <span className="page-number">{ri + 1}</span>
+              <div className="page-right" style={{ opacity: isFlipping && flipDirection === 'next' ? 0.7 : 1, transition: 'opacity 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {ri < totalPages ? (pageImages[ri] ? <img src={pageImages[ri]} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} alt={'Page ' + (ri+1)} /> : <p style={{ color: '#888', fontStyle: 'italic' }}>Loading page {ri + 1}...</p>) : <p style={{ color: '#888', fontStyle: 'italic' }}>✨ The End ✨</p>}
+                <span className="page-number">{ri < totalPages ? ri + 1 : ''}</span>
               </div>
               <button className="page-turn-btn prev" onClick={() => turnPage('prev')} disabled={currentPage === 0} style={{ opacity: currentPage === 0 ? 0.3 : 1 }}>◀</button>
               <button className="page-turn-btn next" onClick={() => turnPage('next')} disabled={currentPage >= totalPages - 2} style={{ opacity: currentPage >= totalPages - 2 ? 0.3 : 1 }}>▶</button>
             </div>
           </div>
-          <div style={{ textAlign: 'center', marginTop: '1.5rem', color: darkMode ? '#aaa' : '#666' }}>
-            <p style={{ fontSize: 14, marginBottom: 10 }}>Pages {li + 1}-{Math.min(ri + 1, totalPages)} of {totalPages}</p>
-            <input type="range" min="0" max={Math.max(0, totalPages - 2)} step="2" value={currentPage} onChange={e => setCurrentPage(+e.target.value)} style={{ width: 300, cursor: 'pointer' }} />
+          <div style={{ textAlign: 'center', marginTop: isMaximized ? '0.5rem' : '1.5rem', padding: isMaximized ? '0 20px 10px' : 0, color: darkMode && !isMaximized ? '#aaa' : '#666' }}>
+            <p style={{ fontSize: 14, marginBottom: 8 }}>Pages {li + 1}-{Math.min(ri + 1, totalPages)} of {totalPages}</p>
+            <input type="range" min="0" max={Math.max(0, totalPages - 2)} step="2" value={currentPage} onChange={e => setCurrentPage(+e.target.value)} style={{ width: isMaximized ? '60%' : 300, cursor: 'pointer' }} />
           </div>
         </div>
       );
+      return readerContent;
     }
 
     // ==================== MAIN DIARY ====================
