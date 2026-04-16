@@ -121,12 +121,31 @@
         return snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       };
 
-      const saveBook = async (book) => {
+      const saveBook = async (book, onProgress) => {
         const meta = { name: book.name, totalPages: book.totalPages, lastPage: book.lastPage || 0, addedDate: book.addedDate, addedAt: firebase.firestore.FieldValue.serverTimestamp() };
         const ref = await getCollection('books').add(meta);
-        const chunkSize = 10;
-        for (let i = 0; i < book.texts.length; i += chunkSize) {
-          await getCollection('books').doc(ref.id).collection('pages').doc('chunk_' + i).set({ startIndex: i, texts: book.texts.slice(i, i + chunkSize) });
+        // Smart chunking: keep each chunk under 900KB to stay within Firestore 1MB limit
+        const chunks = [];
+        let currentChunk = []; let currentSize = 0; let startIdx = 0;
+        for (let i = 0; i < book.texts.length; i++) {
+          const textSize = new Blob([book.texts[i] || '']).size;
+          if (currentSize + textSize > 900000 && currentChunk.length > 0) {
+            chunks.push({ startIndex: startIdx, texts: currentChunk });
+            startIdx = i; currentChunk = [book.texts[i]]; currentSize = textSize;
+          } else { currentChunk.push(book.texts[i]); currentSize += textSize; }
+        }
+        if (currentChunk.length > 0) chunks.push({ startIndex: startIdx, texts: currentChunk });
+        // Batch write chunks (Firestore batch limit = 500 ops)
+        const batchSize = 400;
+        for (let b = 0; b < chunks.length; b += batchSize) {
+          const batch = db.batch();
+          const end = Math.min(b + batchSize, chunks.length);
+          for (let c = b; c < end; c++) {
+            const docRef = getCollection('books').doc(ref.id).collection('pages').doc('chunk_' + chunks[c].startIndex);
+            batch.set(docRef, chunks[c]);
+          }
+          await batch.commit();
+          if (onProgress) onProgress(Math.round((end / chunks.length) * 100));
         }
         return ref.id;
       };
@@ -283,25 +302,31 @@
 
       useEffect(() => { (async () => { try { setBooks(await firestore.loadBooks()); } catch(e) { console.error(e); } setLoading(false); })(); }, []);
 
+      const [importProgress, setImportProgress] = useState('');
+
       const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file || file.type !== 'application/pdf') { alert('Please select a PDF file'); return; }
-        setImporting(true);
+        setImporting(true); setImportProgress('Reading PDF...');
         const reader = new FileReader();
         reader.onload = async (ev) => {
           try {
-            const pdf = await window.pdfjsLib.getDocument(new Uint8Array(ev.target.result)).promise;
+            setImportProgress('Parsing PDF...');
+            const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(ev.target.result) }).promise;
             const texts = [];
-            for (let i = 1; i <= pdf.numPages; i++) { const pg = await pdf.getPage(i); const tc = await pg.getTextContent(); texts.push(tc.items.map(it => it.str).join(' ')); }
+            for (let i = 1; i <= pdf.numPages; i++) {
+              if (i % 50 === 0 || i === pdf.numPages) setImportProgress('Extracting page ' + i + ' of ' + pdf.numPages + '...');
+              const pg = await pdf.getPage(i); const tc = await pg.getTextContent(); texts.push(tc.items.map(it => it.str).join(' '));
+            }
             const bookData = { name: file.name.replace('.pdf', ''), totalPages: pdf.numPages, texts, lastPage: 0, addedDate: new Date().toLocaleString() };
-            setSyncing('syncing');
-            const id = await firestore.saveBook(bookData);
+            setSyncing('syncing'); setImportProgress('Uploading to cloud...');
+            const id = await firestore.saveBook(bookData, (pct) => setImportProgress('Uploading... ' + pct + '%'));
             setBooks([{ id, name: bookData.name, totalPages: bookData.totalPages, lastPage: 0, addedDate: bookData.addedDate }, ...books]);
             setSyncing('synced'); setTimeout(() => setSyncing(null), 2000);
           } catch (err) { console.error('PDF Import Error:', err); alert('Error loading PDF: ' + (err.message || err)); setSyncing('error'); }
-          setImporting(false);
+          setImporting(false); setImportProgress('');
         };
-        reader.onerror = () => { alert('Error reading file.'); setImporting(false); };
+        reader.onerror = () => { alert('Error reading file.'); setImporting(false); setImportProgress(''); };
         reader.readAsArrayBuffer(file); e.target.value = '';
       };
 
@@ -333,7 +358,7 @@
             <SyncIndicator status={syncing} />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
               <h2 style={{ fontSize: '1.25rem', color: darkMode ? '#f5f5f5' : '#2c2c2a' }}>📚 My Book Library</h2>
-              <button onClick={() => fileInputRef.current?.click()} disabled={importing} style={{ padding: '10px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 500, opacity: importing ? 0.6 : 1 }}>{importing ? '⏳ Importing...' : '📄 Import PDF Book'}</button>
+              <button onClick={() => fileInputRef.current?.click()} disabled={importing} style={{ padding: '10px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 500, opacity: importing ? 0.6 : 1 }}>{importing ? ('⏳ ' + (importProgress || 'Importing...')) : '📄 Import PDF Book'}</button>
               <input ref={fileInputRef} type="file" accept=".pdf" onChange={handleFileUpload} style={{ display: 'none' }} />
             </div>
             {books.length === 0 ? (
