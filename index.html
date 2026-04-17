@@ -418,124 +418,90 @@
           ctx.restore();
         };
 
-        // ---- Draw page curl (cylindrical strip-based for realistic curve) ----
+        // ---- Draw page curl (solid base + gradient bend, no strip gaps) ----
         const drawPageCurl = (progress, direction) => {
           if (progress <= 0.001 || progress >= 0.999) return;
           const t = progress;
-          const curlAmount = Math.sin(t * Math.PI); // peaks at midpoint
-          const curlRadius = halfW * 0.14 * curlAmount; // cylinder radius
+          const curlAmount = Math.sin(t * Math.PI);
 
           if (direction === 'next') {
-            // Fold line sweeps from right edge toward spine
             const foldX = halfW + halfW * (1 - t);
             const backImg = getPageImg(ri + 1);
-            const numStrips = 28;
-            const stripW = halfW / numStrips;
+            const regionLeft = Math.max(0, 2 * foldX - W);
+            const regionW = foldX - regionLeft;
 
-            // 1. Shadow on underlying page (right side of fold)
+            // 1. Shadow on underlying right page
             ctx.save();
             ctx.beginPath(); ctx.rect(foldX, 0, W - foldX, H); ctx.clip();
-            const sw = 12 + curlAmount * 45;
+            const sw = 15 + curlAmount * 40;
             const sg = ctx.createLinearGradient(foldX, 0, foldX + sw, 0);
-            sg.addColorStop(0, 'rgba(0,0,0,' + (0.4 * curlAmount) + ')');
-            sg.addColorStop(0.35, 'rgba(0,0,0,' + (0.12 * curlAmount) + ')');
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
+            sg.addColorStop(0.4, 'rgba(0,0,0,' + (0.1 * curlAmount) + ')');
             sg.addColorStop(1, 'transparent');
             ctx.fillStyle = sg; ctx.fillRect(foldX, 0, sw, H);
             ctx.restore();
 
-            // Shadow on left page when curl crosses spine
-            if (t > 0.4) {
+            // Shadow on left page when past spine
+            if (t > 0.45) {
               ctx.save();
               ctx.beginPath(); ctx.rect(0, 0, halfW, H); ctx.clip();
-              const lp = (t - 0.4) / 0.6;
-              const lsw = halfW * lp * 0.4;
+              const lp = (t - 0.45) / 0.55;
+              const lsw = halfW * lp * 0.35;
               const lsg = ctx.createLinearGradient(halfW, 0, halfW - lsw, 0);
-              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.2 * lp) + ')');
+              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.18 * lp) + ')');
               lsg.addColorStop(1, 'transparent');
               ctx.fillStyle = lsg; ctx.fillRect(halfW - lsw, 0, lsw, H);
               ctx.restore();
             }
 
-            // 2. Draw curled strips (back face visible, painter's algorithm back-to-front)
-            // Strips at original positions [halfW, W] that are >= foldX have been folded
-            // They mirror across foldX and land to the LEFT of it
-            for (let i = numStrips - 1; i >= 0; i--) {
-              const stripOrigX = halfW + i * stripW;
-              if (stripOrigX < foldX) continue; // not yet folded
+            // 2. Solid opaque curled page (no strips = no gaps)
+            ctx.save();
+            ctx.beginPath(); ctx.rect(regionLeft, 0, regionW, H); ctx.clip();
 
-              // Distance from fold line (strip center)
-              const distFromFold = stripOrigX + stripW / 2 - foldX;
-              const maxDist = W - foldX;
-              const normDist = maxDist > 0 ? distFromFold / maxDist : 0;
+            // Opaque paper base
+            ctx.fillStyle = '#faf7f0';
+            ctx.fillRect(regionLeft, 0, regionW, H);
 
-              // Mirror position: reflect across foldX
-              const mirrorX = foldX - distFromFold - stripW / 2;
-
-              // Cylindrical curl: offset strips near fold to the RIGHT (creating visible curve)
-              // Strips far from fold (were at right edge) are flat
-              const curlPhase = Math.max(0, 1 - normDist * 2.5); // only curl near the fold
-              const curlOffset = curlRadius * Math.sin(curlPhase * Math.PI);
-              const finalX = mirrorX + curlOffset;
-
-              // Skip if out of bounds
-              if (finalX + stripW < 0 || finalX >= foldX) continue;
-
+            // Draw back page image (mirrored horizontally across foldX)
+            if (backImg && backImg.complete && backImg.naturalWidth > 0) {
+              const imgAr = backImg.naturalWidth / backImg.naturalHeight;
+              const boxAr = halfW / H;
+              let dw, dh;
+              if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
+              else { dh = H * 0.92; dw = dh * imgAr; }
+              const imgDy = (H - dh) / 2;
               ctx.save();
-              ctx.beginPath(); ctx.rect(0, 0, foldX, H); ctx.clip(); // clip to left of fold
-
-              // Paper background
-              const shade = 1 - normDist * 0.06;
-              ctx.fillStyle = 'rgb(' + Math.round(255 * shade) + ',' + Math.round(253 * shade) + ',' + Math.round(247 * shade) + ')';
-              ctx.fillRect(finalX, 0, stripW + 0.5, H);
-
-              // Draw back page image strip
-              if (backImg && backImg.complete && backImg.naturalWidth > 0) {
-                const imgAr = backImg.naturalWidth / backImg.naturalHeight;
-                const boxAr = halfW / H;
-                let dw, dh;
-                if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
-                else { dh = H * 0.92; dw = dh * imgAr; }
-                const imgDx = (halfW - dw) / 2;
-                const imgDy = (H - dh) / 2;
-                // Back page content: what was at right edge of front is at left edge of back
-                const backLocalX = halfW - (stripOrigX - halfW) - stripW;
-                const imgScale = backImg.naturalWidth / dw;
-                const srcX = (backLocalX - imgDx) * imgScale;
-                const srcW = stripW * imgScale;
-                if (srcX + srcW > 0 && srcX < backImg.naturalWidth) {
-                  ctx.drawImage(backImg,
-                    Math.max(0, srcX), 0,
-                    Math.min(srcW, backImg.naturalWidth - Math.max(0, srcX)),
-                    backImg.naturalHeight,
-                    finalX + (srcX < 0 ? -srcX / imgScale : 0), imgDy, stripW, dh);
-                }
-              }
-
-              // Per-strip lighting (cylinder illumination)
-              const lightAngle = curlPhase * Math.PI;
-              const highlight = Math.sin(lightAngle) * 0.18;
-              if (highlight > 0.02) {
-                ctx.fillStyle = 'rgba(255,255,255,' + highlight + ')';
-                ctx.fillRect(finalX, 0, stripW + 0.5, H);
-              }
-              // Darken far strips
-              if (normDist > 0.5) {
-                ctx.fillStyle = 'rgba(0,0,0,' + ((normDist - 0.5) * 0.08) + ')';
-                ctx.fillRect(finalX, 0, stripW + 0.5, H);
-              }
-
+              ctx.translate(foldX, 0);
+              ctx.scale(-1, 1);
+              const imgDx = (halfW - dw) / 2;
+              ctx.drawImage(backImg, imgDx, imgDy, dw, dh);
               ctx.restore();
             }
 
-            // 3. Fold edge (paper thickness)
+            // 3. Cylindrical bend gradient (3D illusion without strip gaps)
+            const bendG = ctx.createLinearGradient(regionLeft, 0, foldX, 0);
+            bendG.addColorStop(0, 'rgba(0,0,0,' + (0.04 * curlAmount) + ')');
+            bendG.addColorStop(0.15, 'transparent');
+            bendG.addColorStop(0.35, 'rgba(255,255,255,' + (0.12 * curlAmount) + ')');
+            bendG.addColorStop(0.5, 'rgba(0,0,0,' + (0.02 * curlAmount) + ')');
+            bendG.addColorStop(0.7, 'rgba(255,255,255,' + (0.15 * curlAmount) + ')');
+            bendG.addColorStop(0.88, 'rgba(0,0,0,' + (0.06 * curlAmount) + ')');
+            bendG.addColorStop(0.96, 'rgba(255,255,255,' + (0.08 * curlAmount) + ')');
+            bendG.addColorStop(1, 'rgba(0,0,0,' + (0.15 * curlAmount) + ')');
+            ctx.fillStyle = bendG;
+            ctx.fillRect(regionLeft, 0, regionW, H);
+
+            ctx.restore();
+
+            // 4. Fold edge (paper thickness)
             ctx.save();
-            const ew = 3 + curlAmount * 7;
+            const ew = 3 + curlAmount * 6;
             const eg = ctx.createLinearGradient(foldX - 1, 0, foldX + ew, 0);
-            eg.addColorStop(0, 'rgba(0,0,0,0.12)');
+            eg.addColorStop(0, 'rgba(0,0,0,0.1)');
             eg.addColorStop(0.15, 'rgba(248,243,233,1)');
             eg.addColorStop(0.45, 'rgba(255,253,248,1)');
             eg.addColorStop(0.75, 'rgba(245,240,230,0.95)');
-            eg.addColorStop(1, 'rgba(0,0,0,0.06)');
+            eg.addColorStop(1, 'rgba(0,0,0,0.05)');
             ctx.fillStyle = eg;
             ctx.fillRect(foldX - 1, 0, ew + 1, H);
             ctx.restore();
@@ -544,108 +510,81 @@
             // prev: Fold line sweeps from left edge toward spine
             const foldX = halfW * t;
             const backImg = getPageImg(li - 1);
-            const numStrips = 28;
-            const stripW = halfW / numStrips;
+            const regionRight = Math.min(W, 2 * foldX);
+            const regionW = regionRight - foldX;
 
             // 1. Shadow on underlying left page
             ctx.save();
             ctx.beginPath(); ctx.rect(0, 0, foldX, H); ctx.clip();
-            const sw = 12 + curlAmount * 45;
+            const sw = 15 + curlAmount * 40;
             const sg = ctx.createLinearGradient(foldX, 0, foldX - sw, 0);
-            sg.addColorStop(0, 'rgba(0,0,0,' + (0.4 * curlAmount) + ')');
-            sg.addColorStop(0.35, 'rgba(0,0,0,' + (0.12 * curlAmount) + ')');
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
+            sg.addColorStop(0.4, 'rgba(0,0,0,' + (0.1 * curlAmount) + ')');
             sg.addColorStop(1, 'transparent');
             ctx.fillStyle = sg; ctx.fillRect(foldX - sw, 0, sw, H);
             ctx.restore();
 
             // Shadow on right page when past spine
-            if (t > 0.4) {
+            if (t > 0.45) {
               ctx.save();
               ctx.beginPath(); ctx.rect(halfW, 0, halfW, H); ctx.clip();
-              const rp = (t - 0.4) / 0.6;
-              const rsw = halfW * rp * 0.4;
+              const rp = (t - 0.45) / 0.55;
+              const rsw = halfW * rp * 0.35;
               const rsg = ctx.createLinearGradient(halfW, 0, halfW + rsw, 0);
-              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.2 * rp) + ')');
+              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.18 * rp) + ')');
               rsg.addColorStop(1, 'transparent');
               ctx.fillStyle = rsg; ctx.fillRect(halfW, 0, rsw, H);
               ctx.restore();
             }
 
-            // 2. Draw curled strips (back face of left page)
-            for (let i = 0; i < numStrips; i++) {
-              const stripOrigX = i * stripW;
-              if (stripOrigX + stripW > foldX) continue; // not yet folded
+            // 2. Solid opaque curled page
+            ctx.save();
+            ctx.beginPath(); ctx.rect(foldX, 0, regionW, H); ctx.clip();
 
-              const distFromFold = foldX - (stripOrigX + stripW / 2);
-              const maxDist = foldX;
-              const normDist = maxDist > 0 ? distFromFold / maxDist : 0;
+            // Opaque paper base
+            ctx.fillStyle = '#faf7f0';
+            ctx.fillRect(foldX, 0, regionW, H);
 
-              // Mirror across foldX
-              const mirrorX = foldX + distFromFold - stripW / 2;
-
-              // Curl offset (pushes strips near fold to the LEFT)
-              const curlPhase = Math.max(0, 1 - normDist * 2.5);
-              const curlOffset = curlRadius * Math.sin(curlPhase * Math.PI);
-              const finalX = mirrorX - curlOffset;
-
-              if (finalX + stripW < foldX || finalX >= W) continue;
-
+            // Draw back page image (mirrored)
+            if (backImg && backImg.complete && backImg.naturalWidth > 0) {
+              const imgAr = backImg.naturalWidth / backImg.naturalHeight;
+              const boxAr = halfW / H;
+              let dw, dh;
+              if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
+              else { dh = H * 0.92; dw = dh * imgAr; }
+              const imgDy = (H - dh) / 2;
               ctx.save();
-              ctx.beginPath(); ctx.rect(foldX, 0, W - foldX, H); ctx.clip(); // clip to right of fold
-
-              // Paper background
-              const shade = 1 - normDist * 0.06;
-              ctx.fillStyle = 'rgb(' + Math.round(255 * shade) + ',' + Math.round(253 * shade) + ',' + Math.round(247 * shade) + ')';
-              ctx.fillRect(finalX, 0, stripW + 0.5, H);
-
-              // Draw back page image strip
-              if (backImg && backImg.complete && backImg.naturalWidth > 0) {
-                const imgAr = backImg.naturalWidth / backImg.naturalHeight;
-                const boxAr = halfW / H;
-                let dw, dh;
-                if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
-                else { dh = H * 0.92; dw = dh * imgAr; }
-                const imgDx = halfW + (halfW - dw) / 2;
-                const imgDy = (H - dh) / 2;
-                // Back of left page: content mirrors
-                const backLocalX = halfW - stripOrigX - stripW;
-                const imgScale = backImg.naturalWidth / dw;
-                const srcX = (backLocalX + halfW - imgDx) * imgScale;
-                const srcW = stripW * imgScale;
-                // Map to the right page position
-                if (srcX + srcW > 0 && srcX < backImg.naturalWidth) {
-                  ctx.drawImage(backImg,
-                    Math.max(0, srcX), 0,
-                    Math.min(srcW, backImg.naturalWidth - Math.max(0, srcX)),
-                    backImg.naturalHeight,
-                    finalX + (srcX < 0 ? -srcX / imgScale : 0), imgDy, stripW, dh);
-                }
-              }
-
-              // Per-strip lighting
-              const lightAngle = curlPhase * Math.PI;
-              const highlight = Math.sin(lightAngle) * 0.18;
-              if (highlight > 0.02) {
-                ctx.fillStyle = 'rgba(255,255,255,' + highlight + ')';
-                ctx.fillRect(finalX, 0, stripW + 0.5, H);
-              }
-              if (normDist > 0.5) {
-                ctx.fillStyle = 'rgba(0,0,0,' + ((normDist - 0.5) * 0.08) + ')';
-                ctx.fillRect(finalX, 0, stripW + 0.5, H);
-              }
-
+              ctx.translate(foldX, 0);
+              ctx.scale(-1, 1);
+              const imgDx = -(halfW - (halfW - dw) / 2);
+              ctx.drawImage(backImg, imgDx, imgDy, dw, dh);
               ctx.restore();
             }
 
-            // 3. Fold edge
+            // 3. Cylindrical bend gradient
+            const bendG = ctx.createLinearGradient(foldX, 0, regionRight, 0);
+            bendG.addColorStop(0, 'rgba(0,0,0,' + (0.15 * curlAmount) + ')');
+            bendG.addColorStop(0.04, 'rgba(255,255,255,' + (0.08 * curlAmount) + ')');
+            bendG.addColorStop(0.12, 'rgba(0,0,0,' + (0.06 * curlAmount) + ')');
+            bendG.addColorStop(0.3, 'rgba(255,255,255,' + (0.15 * curlAmount) + ')');
+            bendG.addColorStop(0.5, 'rgba(0,0,0,' + (0.02 * curlAmount) + ')');
+            bendG.addColorStop(0.65, 'rgba(255,255,255,' + (0.12 * curlAmount) + ')');
+            bendG.addColorStop(0.85, 'transparent');
+            bendG.addColorStop(1, 'rgba(0,0,0,' + (0.04 * curlAmount) + ')');
+            ctx.fillStyle = bendG;
+            ctx.fillRect(foldX, 0, regionW, H);
+
+            ctx.restore();
+
+            // 4. Fold edge
             ctx.save();
-            const ew = 3 + curlAmount * 7;
+            const ew = 3 + curlAmount * 6;
             const eg = ctx.createLinearGradient(foldX - ew, 0, foldX + 1, 0);
-            eg.addColorStop(0, 'rgba(0,0,0,0.06)');
+            eg.addColorStop(0, 'rgba(0,0,0,0.05)');
             eg.addColorStop(0.25, 'rgba(245,240,230,0.95)');
             eg.addColorStop(0.55, 'rgba(255,253,248,1)');
             eg.addColorStop(0.85, 'rgba(248,243,233,1)');
-            eg.addColorStop(1, 'rgba(0,0,0,0.12)');
+            eg.addColorStop(1, 'rgba(0,0,0,0.1)');
             ctx.fillStyle = eg;
             ctx.fillRect(foldX - ew, 0, ew + 1, H);
             ctx.restore();
