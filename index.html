@@ -865,12 +865,11 @@
           const ease = Math.sin(t * Math.PI); // peaks mid-flip
 
           if (direction === 'next') {
-            // Corner travels from bottom-right (W,H) toward bottom-left along an arc
+            // Corner peels from bottom-right up and across (big arc → diagonal fold)
             const origX = W, origY = H;
-            const destX = 0, destY = H;
-            // Corner position with slight upward arc
-            const cx = origX + (destX - origX) * t;
-            const cy = origY - ease * H * 0.08;
+            // Corner arcs upward dramatically then settles at top-left area
+            const cx = W - W * t;
+            const cy = H - ease * H * 0.55;
 
             // Fold line = perpendicular bisector of (origX,origY)→(cx,cy)
             const midX = (origX + cx) / 2, midY = (origY + cy) / 2;
@@ -1053,11 +1052,10 @@
             ctx.restore();
 
           } else {
-            // --- PREV: corner travels from bottom-left (0,H) toward bottom-right ---
+            // --- PREV: corner peels from bottom-left up and across ---
             const origX = 0, origY = H;
-            const destX = W, destY = H;
-            const cx = origX + (destX - origX) * t;
-            const cy = origY - ease * H * 0.08;
+            const cx = W * t;
+            const cy = H - ease * H * 0.55;
 
             const midX = (origX + cx) / 2, midY = (origY + cy) / 2;
             const dx = cx - origX, dy = cy - origY;
