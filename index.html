@@ -64,15 +64,25 @@
       .book-wrapper { height: clamp(220px, 70vh, 500px); }
     }
     .drawing-canvas-container { position: relative; border: 2px solid #d3d1c7; border-radius: 12px; overflow: hidden; background: white; }
-    .drawing-toolbar { display: flex; gap: 10px; flex-wrap: wrap; padding: 15px; background: rgba(0,0,0,0.03); border-bottom: 1px solid #e0ddd5; align-items: center; }
-    .color-picker-container { display: flex; gap: 5px; align-items: center; }
-    .color-swatch { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.2s; }
-    .color-swatch:hover { transform: scale(1.1); }
-    .color-swatch.active { border-color: #333; box-shadow: 0 0 0 2px white, 0 0 0 4px #1D9E75; }
-    .brush-size-slider { width: 100px; }
+    .drawing-toolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; background: rgba(0,0,0,0.03); border-bottom: 1px solid #e0ddd5; align-items: center; }
+    .drawing-toolbar-section { display: flex; gap: 4px; align-items: center; padding: 0 6px; border-right: 1px solid rgba(0,0,0,0.08); }
+    .drawing-toolbar-section:last-child { border-right: none; }
+    .dtool-btn { padding: 5px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; transition: all 0.15s; white-space: nowrap; }
+    .dtool-btn.active { background: #1D9E75; color: white; }
+    .color-picker-container { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+    .color-swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.15s; }
+    .color-swatch:hover { transform: scale(1.15); }
+    .color-swatch.active { border-color: #333; box-shadow: 0 0 0 2px white, 0 0 0 3px #1D9E75; }
+    .brush-size-slider { width: 80px; }
     .saved-drawings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; margin-top: 20px; }
     .saved-drawing-item { border: 1px solid #e0ddd5; border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.2s; }
     .saved-drawing-item:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+    .shape-dropdown { position: absolute; top: 100%; left: 0; background: white; border: 1px solid #d3d1c7; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 6px; z-index: 20; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; min-width: 180px; }
+    .shape-dropdown button { padding: 8px; border: none; background: none; border-radius: 6px; cursor: pointer; font-size: 18px; transition: background 0.1s; }
+    .shape-dropdown button:hover { background: #e8f5e9; }
+    .font-dropdown { position: absolute; top: 100%; left: 0; background: white; border: 1px solid #d3d1c7; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); padding: 6px; z-index: 20; max-height: 200px; overflow-y: auto; min-width: 180px; }
+    .font-dropdown button { display: block; width: 100%; padding: 8px 12px; border: none; background: none; border-radius: 4px; cursor: pointer; text-align: left; font-size: 14px; }
+    .font-dropdown button:hover { background: #e8f5e9; }
     .saved-drawing-item img { width: 100%; height: 120px; object-fit: cover; }
     .loading-spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; border-top-color: #fff; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -188,21 +198,176 @@
       return <div className="sync-indicator" style={{ background: s.bg, color: 'white', opacity: status === 'synced' ? 0.8 : 1 }}>{status === 'syncing' && <span className="loading-spinner" style={{ width: 14, height: 14, marginRight: 6, verticalAlign: 'middle' }}></span>}{s.text}</div>;
     }
 
-    // ==================== DRAWING COMPONENT ====================
+    // ==================== DRAWING COMPONENT (Advanced) ====================
     function DrawingCanvas({ darkMode, userId }) {
       const canvasRef = useRef(null);
-      const [isDrawing, setIsDrawing] = useState(false);
-      const [brushColor, setBrushColor] = useState('#000000');
-      const [brushSize, setBrushSize] = useState(5);
+      const overlayRef = useRef(null);
       const [tool, setTool] = useState('brush');
+      const [brushColor, setBrushColor] = useState('#000000');
+      const [fillColor, setFillColor] = useState('#3b82f6');
+      const [brushSize, setBrushSize] = useState(4);
+      const [shapeType, setShapeType] = useState('rect');
+      const [fontFamily, setFontFamily] = useState('Arial');
+      const [fontSize, setFontSize] = useState(24);
+      const [fontStyle, setFontStyle] = useState('normal'); // normal, bold, italic
+      const [textInput, setTextInput] = useState('');
+      const [textPos, setTextPos] = useState(null);
+      const [showShapeMenu, setShowShapeMenu] = useState(false);
+      const [showFontMenu, setShowFontMenu] = useState(false);
       const [drawings, setDrawings] = useState([]);
       const [currentDrawingName, setCurrentDrawingName] = useState('');
       const [showSaved, setShowSaved] = useState(false);
       const [syncing, setSyncing] = useState(null);
       const [loading, setLoading] = useState(true);
-      const lastPressureRef = useRef(0.5);
+      const [selectedObj, setSelectedObj] = useState(null);
+      const [rotating, setRotating] = useState(false);
+
+      const historyRef = useRef([]);
+      const redoRef = useRef([]);
+      const objectsRef = useRef([]);
+      const dragRef = useRef(null);
+      const drawStartRef = useRef(null);
       const firestore = useFirestore(userId);
-      const colors = ['#000000','#e24b4a','#1D9E75','#3b82f6','#f59e0b','#8b5cf6','#ec4899','#6b7280','#ffffff'];
+
+      const colors = ['#000000','#e24b4a','#1D9E75','#3b82f6','#f59e0b','#8b5cf6','#ec4899','#f97316','#06b6d4','#84cc16','#6b7280','#ffffff'];
+      const fonts = ['Arial','Georgia','Times New Roman','Courier New','Verdana','Comic Sans MS','Impact','Trebuchet MS','EB Garamond'];
+      const shapes = [
+        { id: 'rect', icon: '▭', label: 'Rectangle' },
+        { id: 'circle', icon: '○', label: 'Circle' },
+        { id: 'ellipse', icon: '⬭', label: 'Ellipse' },
+        { id: 'triangle', icon: '△', label: 'Triangle' },
+        { id: 'line', icon: '╱', label: 'Line' },
+        { id: 'arrow', icon: '→', label: 'Arrow' },
+        { id: 'star', icon: '☆', label: 'Star' },
+        { id: 'diamond', icon: '◇', label: 'Diamond' },
+        { id: 'pentagon', icon: '⬠', label: 'Pentagon' },
+        { id: 'hexagon', icon: '⬡', label: 'Hexagon' },
+        { id: 'heart', icon: '♡', label: 'Heart' },
+        { id: 'roundRect', icon: '▢', label: 'Rounded Rect' },
+      ];
+
+      // --- Canvas helpers ---
+      const getXY = (e) => {
+        const c = canvasRef.current, r = c.getBoundingClientRect();
+        const sx = c.width / r.width, sy = c.height / r.height;
+        const pt = e.touches ? e.touches[0] : e;
+        return { x: (pt.clientX - r.left) * sx, y: (pt.clientY - r.top) * sy };
+      };
+
+      const saveHistory = () => {
+        const c = canvasRef.current;
+        historyRef.current.push(c.toDataURL());
+        if (historyRef.current.length > 50) historyRef.current.shift();
+        redoRef.current = [];
+      };
+
+      const undo = () => {
+        if (historyRef.current.length === 0) return;
+        const c = canvasRef.current, ctx = c.getContext('2d');
+        redoRef.current.push(c.toDataURL());
+        const prev = historyRef.current.pop();
+        const img = new Image(); img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0); }; img.src = prev;
+        // Also remove last object
+        objectsRef.current.pop();
+        setSelectedObj(null);
+      };
+
+      const redo = () => {
+        if (redoRef.current.length === 0) return;
+        const c = canvasRef.current, ctx = c.getContext('2d');
+        historyRef.current.push(c.toDataURL());
+        const next = redoRef.current.pop();
+        const img = new Image(); img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0); }; img.src = next;
+      };
+
+      // --- Draw shape path on context ---
+      const drawShapePath = (ctx, type, x, y, w, h) => {
+        ctx.beginPath();
+        if (type === 'rect') { ctx.rect(x, y, w, h); }
+        else if (type === 'roundRect') { const r = Math.min(Math.abs(w), Math.abs(h)) * 0.2; ctx.roundRect(x, y, w, h, r); }
+        else if (type === 'circle') { const r = Math.max(Math.abs(w), Math.abs(h)) / 2; ctx.arc(x + w/2, y + h/2, r, 0, Math.PI*2); }
+        else if (type === 'ellipse') { ctx.ellipse(x + w/2, y + h/2, Math.abs(w/2), Math.abs(h/2), 0, 0, Math.PI*2); }
+        else if (type === 'triangle') { ctx.moveTo(x + w/2, y); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.closePath(); }
+        else if (type === 'diamond') { ctx.moveTo(x + w/2, y); ctx.lineTo(x + w, y + h/2); ctx.lineTo(x + w/2, y + h); ctx.lineTo(x, y + h/2); ctx.closePath(); }
+        else if (type === 'pentagon') { for(let i=0;i<5;i++){const a=-Math.PI/2+i*2*Math.PI/5;ctx.lineTo(x+w/2+w/2*Math.cos(a),y+h/2+h/2*Math.sin(a));}ctx.closePath(); }
+        else if (type === 'hexagon') { for(let i=0;i<6;i++){const a=-Math.PI/2+i*2*Math.PI/6;ctx.lineTo(x+w/2+w/2*Math.cos(a),y+h/2+h/2*Math.sin(a));}ctx.closePath(); }
+        else if (type === 'star') { for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5;const r2=i%2===0?Math.min(Math.abs(w),Math.abs(h))/2:Math.min(Math.abs(w),Math.abs(h))/4.5;ctx.lineTo(x+w/2+r2*Math.cos(a),y+h/2+r2*Math.sin(a));}ctx.closePath(); }
+        else if (type === 'heart') { const cx2=x+w/2,cy2=y+h*0.3;ctx.moveTo(cx2,y+h);ctx.bezierCurveTo(x-w*0.1,y+h*0.4,x,y-h*0.1,cx2,cy2);ctx.bezierCurveTo(x+w,y-h*0.1,x+w*1.1,y+h*0.4,cx2,y+h); }
+        else if (type === 'line') { ctx.moveTo(x, y); ctx.lineTo(x + w, y + h); }
+        else if (type === 'arrow') { ctx.moveTo(x, y); ctx.lineTo(x + w, y + h); const angle = Math.atan2(h, w); const hl = 15; ctx.moveTo(x+w, y+h); ctx.lineTo(x+w-hl*Math.cos(angle-0.4), y+h-hl*Math.sin(angle-0.4)); ctx.moveTo(x+w, y+h); ctx.lineTo(x+w-hl*Math.cos(angle+0.4), y+h-hl*Math.sin(angle+0.4)); }
+      };
+
+      // --- Flood fill (paint bucket) ---
+      const floodFill = (sx, sy, fillCol) => {
+        const c = canvasRef.current, ctx = c.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, c.width, c.height);
+        const data = imgData.data;
+        const w = c.width, h = c.height;
+        const px = Math.round(sx), py = Math.round(sy);
+        if (px < 0 || px >= w || py < 0 || py >= h) return;
+        const idx = (py * w + px) * 4;
+        const tr = data[idx], tg = data[idx+1], tb = data[idx+2], ta = data[idx+3];
+        // Parse fill color
+        const tmp = document.createElement('canvas'); tmp.width = 1; tmp.height = 1;
+        const tc = tmp.getContext('2d'); tc.fillStyle = fillCol; tc.fillRect(0,0,1,1);
+        const fd = tc.getImageData(0,0,1,1).data;
+        const fr = fd[0], fg = fd[1], fb = fd[2];
+        if (tr === fr && tg === fg && tb === fb) return; // same color
+        const tolerance = 32;
+        const match = (i) => Math.abs(data[i]-tr)<=tolerance && Math.abs(data[i+1]-tg)<=tolerance && Math.abs(data[i+2]-tb)<=tolerance && Math.abs(data[i+3]-ta)<=tolerance;
+        const stack = [[px, py]];
+        const visited = new Uint8Array(w * h);
+        while (stack.length > 0) {
+          const [cx2, cy2] = stack.pop();
+          const ci = (cy2 * w + cx2) * 4;
+          if (cx2 < 0 || cx2 >= w || cy2 < 0 || cy2 >= h) continue;
+          if (visited[cy2 * w + cx2]) continue;
+          if (!match(ci)) continue;
+          visited[cy2 * w + cx2] = 1;
+          data[ci] = fr; data[ci+1] = fg; data[ci+2] = fb; data[ci+3] = 255;
+          stack.push([cx2+1,cy2],[cx2-1,cy2],[cx2,cy2+1],[cx2,cy2-1]);
+        }
+        ctx.putImageData(imgData, 0, 0);
+      };
+
+      // --- Render all objects on canvas ---
+      const renderCanvas = () => {
+        const c = canvasRef.current, ctx = c.getContext('2d');
+        ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+        objectsRef.current.forEach((obj, i) => {
+          ctx.save();
+          if (obj.rotation) { ctx.translate(obj.x + obj.w/2, obj.y + obj.h/2); ctx.rotate(obj.rotation); ctx.translate(-(obj.x + obj.w/2), -(obj.y + obj.h/2)); }
+          if (obj.type === 'image') {
+            ctx.drawImage(obj.img, 0, 0, obj.img.width, obj.img.height, obj.x, obj.y, obj.w, obj.h);
+          } else if (obj.type === 'freehand') {
+            ctx.strokeStyle = obj.color; ctx.lineWidth = obj.size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.beginPath();
+            obj.points.forEach((p, j) => { if (j === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+            ctx.stroke();
+          } else if (obj.type === 'text') {
+            const style = (obj.fontStyle === 'bold' ? 'bold ' : obj.fontStyle === 'italic' ? 'italic ' : '') + obj.fontSize + 'px ' + obj.fontFamily;
+            ctx.font = style; ctx.fillStyle = obj.color; ctx.fillText(obj.text, obj.x, obj.y + obj.fontSize);
+          } else if (obj.type === 'shape') {
+            drawShapePath(ctx, obj.shape, obj.x, obj.y, obj.w, obj.h);
+            if (obj.filled) { ctx.fillStyle = obj.fillColor; ctx.fill(); }
+            ctx.strokeStyle = obj.color; ctx.lineWidth = obj.size; ctx.stroke();
+          }
+          ctx.restore();
+        });
+        // Draw selection handles
+        if (selectedObj !== null && objectsRef.current[selectedObj]) {
+          const obj = objectsRef.current[selectedObj];
+          ctx.save();
+          ctx.strokeStyle = '#1D9E75'; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+          ctx.strokeRect(obj.x - 4, obj.y - 4, (obj.w || 100) + 8, (obj.h || 30) + 8);
+          ctx.setLineDash([]);
+          // Rotate handle
+          const cx2 = obj.x + (obj.w || 100) / 2, top2 = obj.y - 24;
+          ctx.beginPath(); ctx.arc(cx2, top2, 7, 0, Math.PI*2); ctx.fillStyle = '#1D9E75'; ctx.fill();
+          ctx.fillStyle = 'white'; ctx.font = '10px Arial'; ctx.textAlign = 'center'; ctx.fillText('↻', cx2, top2 + 3.5);
+          ctx.restore();
+        }
+      };
 
       useEffect(() => {
         (async () => { try { setDrawings(await firestore.loadDrawings()); } catch(e) { console.error(e); } setLoading(false); })();
@@ -210,54 +375,189 @@
         if (c) { const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
       }, []);
 
-      const startDrawing = (e) => {
+      // --- Pointer handlers ---
+      const handleDown = (e) => {
         e.preventDefault();
-        const c = canvasRef.current;
-        const r = c.getBoundingClientRect();
-        const scaleX = c.width / r.width, scaleY = c.height / r.height;
-        const x = (e.clientX - r.left) * scaleX;
-        const y = (e.clientY - r.top) * scaleY;
-        const ctx = c.getContext('2d');
-        ctx.beginPath(); ctx.moveTo(x, y);
-        setIsDrawing(true);
-        lastPressureRef.current = e.pressure || 0.5;
+        const p = getXY(e);
+        setShowShapeMenu(false); setShowFontMenu(false);
+
+        if (tool === 'select') {
+          // Check rotate handle first
+          if (selectedObj !== null && objectsRef.current[selectedObj]) {
+            const obj = objectsRef.current[selectedObj];
+            const cx2 = obj.x + (obj.w||100)/2, top2 = obj.y - 24;
+            if (Math.hypot(p.x - cx2, p.y - top2) < 14) { setRotating(true); dragRef.current = { ox: p.x, oy: p.y }; return; }
+          }
+          // Hit test objects (reverse order = top first)
+          let found = -1;
+          for (let i = objectsRef.current.length - 1; i >= 0; i--) {
+            const o = objectsRef.current[i];
+            if (p.x >= o.x && p.x <= o.x + (o.w||100) && p.y >= o.y && p.y <= o.y + (o.h||30)) { found = i; break; }
+          }
+          if (found >= 0) {
+            setSelectedObj(found);
+            dragRef.current = { idx: found, ox: p.x - objectsRef.current[found].x, oy: p.y - objectsRef.current[found].y };
+          } else { setSelectedObj(null); }
+          renderCanvas();
+          return;
+        }
+
+        if (tool === 'fill') { saveHistory(); floodFill(p.x, p.y, fillColor); return; }
+
+        if (tool === 'text') { setTextPos(p); return; }
+
+        saveHistory();
+        if (tool === 'brush' || tool === 'eraser') {
+          const c = canvasRef.current, ctx = c.getContext('2d');
+          const newObj = { type: 'freehand', color: tool === 'eraser' ? '#ffffff' : brushColor, size: tool === 'eraser' ? brushSize*3 : brushSize, points: [p], x: p.x, y: p.y, w: 0, h: 0, rotation: 0 };
+          objectsRef.current.push(newObj);
+          drawStartRef.current = { tool: 'freehand', idx: objectsRef.current.length - 1 };
+          ctx.beginPath(); ctx.moveTo(p.x, p.y);
+          ctx.strokeStyle = newObj.color; ctx.lineWidth = newObj.size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        } else if (tool === 'shape') {
+          drawStartRef.current = { tool: 'shape', sx: p.x, sy: p.y };
+        }
       };
-      const draw = (e) => {
-        if (!isDrawing) return;
+
+      const handleMove = (e) => {
         e.preventDefault();
-        const c = canvasRef.current;
-        const r = c.getBoundingClientRect();
-        const scaleX = c.width / r.width, scaleY = c.height / r.height;
-        const x = (e.clientX - r.left) * scaleX;
-        const y = (e.clientY - r.top) * scaleY;
-        const pressure = e.pressure !== undefined ? e.pressure : 0.5;
-        const ctx = c.getContext('2d');
-        ctx.lineTo(x, y);
-        ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : brushColor;
-        const baseSize = tool === 'eraser' ? brushSize * 3 : brushSize;
-        ctx.lineWidth = baseSize * (0.4 + pressure * 0.6);
-        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.globalAlpha = tool === 'eraser' ? 1 : Math.max(0.3, pressure);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        lastPressureRef.current = pressure;
+        const p = getXY(e);
+
+        if (rotating && selectedObj !== null) {
+          const obj = objectsRef.current[selectedObj];
+          const cx2 = obj.x + (obj.w||100)/2, cy2 = obj.y + (obj.h||30)/2;
+          obj.rotation = Math.atan2(p.y - cy2, p.x - cx2) + Math.PI/2;
+          renderCanvas(); return;
+        }
+
+        if (tool === 'select' && dragRef.current && dragRef.current.idx !== undefined) {
+          const obj = objectsRef.current[dragRef.current.idx];
+          obj.x = p.x - dragRef.current.ox;
+          obj.y = p.y - dragRef.current.oy;
+          renderCanvas(); return;
+        }
+
+        if (!drawStartRef.current) return;
+
+        if (drawStartRef.current.tool === 'freehand') {
+          const obj = objectsRef.current[drawStartRef.current.idx];
+          obj.points.push(p);
+          const c = canvasRef.current, ctx = c.getContext('2d');
+          const pressure = e.pressure !== undefined ? e.pressure : 0.5;
+          ctx.lineTo(p.x, p.y);
+          ctx.lineWidth = obj.size * (0.4 + pressure * 0.6);
+          ctx.stroke();
+          // Update bounds
+          obj.x = Math.min(obj.x, p.x); obj.y = Math.min(obj.y, p.y);
+          obj.w = Math.max(obj.w, p.x - obj.x); obj.h = Math.max(obj.h, p.y - obj.y);
+        } else if (drawStartRef.current.tool === 'shape') {
+          // Preview shape on overlay
+          const oc = overlayRef.current;
+          if (!oc) return;
+          const ctx2 = oc.getContext('2d');
+          ctx2.clearRect(0, 0, oc.width, oc.height);
+          const sx = drawStartRef.current.sx, sy = drawStartRef.current.sy;
+          const w = p.x - sx, h = p.y - sy;
+          ctx2.strokeStyle = brushColor; ctx2.lineWidth = brushSize; ctx2.lineCap = 'round';
+          drawShapePath(ctx2, shapeType, sx, sy, w, h);
+          ctx2.stroke();
+        }
       };
-      const stopDrawing = () => setIsDrawing(false);
-      const clearCanvas = () => { const c = canvasRef.current; const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); };
+
+      const handleUp = () => {
+        if (rotating) { setRotating(false); dragRef.current = null; return; }
+        if (tool === 'select') { dragRef.current = null; return; }
+        if (drawStartRef.current && drawStartRef.current.tool === 'shape') {
+          // Commit shape preview to canvas
+          const oc = overlayRef.current;
+          if (oc) {
+            const ctx2 = oc.getContext('2d');
+            const imgD = ctx2.getImageData(0, 0, oc.width, oc.height);
+            // Check if anything was drawn
+            const sx = drawStartRef.current.sx, sy = drawStartRef.current.sy;
+            const p = getLastPoint();
+            const w = (p?.x || sx) - sx, h = (p?.y || sy) - sy;
+            if (Math.abs(w) > 3 || Math.abs(h) > 3) {
+              const obj = { type: 'shape', shape: shapeType, x: Math.min(sx, sx+w), y: Math.min(sy, sy+h), w: Math.abs(w), h: Math.abs(h), color: brushColor, fillColor, filled: false, size: brushSize, rotation: 0 };
+              objectsRef.current.push(obj);
+              renderCanvas();
+            }
+            ctx2.clearRect(0, 0, oc.width, oc.height);
+          }
+        }
+        if (drawStartRef.current && drawStartRef.current.tool === 'freehand') {
+          // Bounds already updated
+        }
+        drawStartRef.current = null;
+      };
+
+      const lastPointRef = useRef(null);
+      const getLastPoint = () => lastPointRef.current;
+      // Track last point in move
+      const wrappedMove = (e) => {
+        const p = getXY(e);
+        lastPointRef.current = p;
+        handleMove(e);
+      };
+
+      // --- Text commit ---
+      const commitText = () => {
+        if (!textPos || !textInput.trim()) { setTextPos(null); setTextInput(''); return; }
+        saveHistory();
+        const c = canvasRef.current, ctx = c.getContext('2d');
+        const style = (fontStyle === 'bold' ? 'bold ' : fontStyle === 'italic' ? 'italic ' : '') + fontSize + 'px ' + fontFamily;
+        ctx.font = style;
+        const m = ctx.measureText(textInput);
+        const obj = { type: 'text', text: textInput, x: textPos.x, y: textPos.y, w: m.width, h: fontSize + 4, color: brushColor, fontFamily, fontSize, fontStyle, rotation: 0 };
+        objectsRef.current.push(obj);
+        renderCanvas();
+        setTextPos(null); setTextInput('');
+      };
+
+      // --- Fill selected shape ---
+      const fillSelected = () => {
+        if (selectedObj === null) return;
+        const obj = objectsRef.current[selectedObj];
+        if (obj.type === 'shape') { saveHistory(); obj.filled = !obj.filled; obj.fillColor = fillColor; renderCanvas(); }
+      };
+
+      // --- Delete selected ---
+      const deleteSelected = () => {
+        if (selectedObj === null) return;
+        saveHistory();
+        objectsRef.current.splice(selectedObj, 1);
+        setSelectedObj(null);
+        renderCanvas();
+      };
+
+      const clearCanvas = () => { saveHistory(); objectsRef.current = []; setSelectedObj(null); const c = canvasRef.current, ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); };
 
       const saveDrawing = async () => {
-        const name = currentDrawingName.trim() || 'Drawing ' + (drawings.length + 1);
-        const img = canvasRef.current.toDataURL('image/png', 0.6);
-        const d = { name, image: img, date: new Date().toLocaleString() };
-        setSyncing('syncing');
-        try { const id = await firestore.saveDrawing(d); setDrawings([{ id, ...d }, ...drawings]); setCurrentDrawingName(''); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); }
-        catch (e) { console.error(e); setSyncing('error'); }
+        renderCanvas(); // ensure clean render (no selection handles)
+        setSelectedObj(null);
+        setTimeout(async () => {
+          const c = canvasRef.current;
+          const name = currentDrawingName.trim() || 'Drawing ' + (drawings.length + 1);
+          const img = c.toDataURL('image/png', 0.6);
+          const d = { name, image: img, date: new Date().toLocaleString() };
+          setSyncing('syncing');
+          try { const id = await firestore.saveDrawing(d); setDrawings([{ id, ...d }, ...drawings]); setCurrentDrawingName(''); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); }
+          catch (err) { console.error(err); setSyncing('error'); }
+        }, 50);
       };
 
-      const loadDrawing = (d) => { const c = canvasRef.current; const ctx = c.getContext('2d'); const img = new Image(); img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0); }; img.src = d.image; setShowSaved(false); };
+      const loadDrawing = (d) => { const c = canvasRef.current, ctx = c.getContext('2d'); const img = new Image(); img.onload = () => { ctx.clearRect(0, 0, c.width, c.height); ctx.drawImage(img, 0, 0); objectsRef.current = [{ type: 'image', img, x: 0, y: 0, w: c.width, h: c.height, rotation: 0 }]; }; img.src = d.image; setShowSaved(false); };
+      const handleDeleteDrawing = async (id) => { setSyncing('syncing'); try { await firestore.deleteDrawing(id); setDrawings(drawings.filter(d2 => d2.id !== id)); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); } catch(err) { setSyncing('error'); } };
+      const downloadDrawing = () => { setSelectedObj(null); setTimeout(() => { renderCanvas(); const link = document.createElement('a'); link.download = (currentDrawingName || 'my-drawing') + '.png'; link.href = canvasRef.current.toDataURL('image/png'); link.click(); }, 50); };
 
-      const handleDelete = async (id) => { setSyncing('syncing'); try { await firestore.deleteDrawing(id); setDrawings(drawings.filter(d => d.id !== id)); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); } catch(e) { setSyncing('error'); } };
-      const downloadDrawing = () => { const link = document.createElement('a'); link.download = (currentDrawingName || 'my-drawing') + '.png'; link.href = canvasRef.current.toDataURL('image/png'); link.click(); };
+      const cursorStyle = tool === 'eraser' ? 'cell' : tool === 'fill' ? 'crosshair' : tool === 'text' ? 'text' : tool === 'select' ? 'default' : 'crosshair';
+
+      const ToolBtn = ({ t, icon, label }) => (
+        <button className={'dtool-btn' + (tool === t ? ' active' : '')}
+          style={{ background: tool === t ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === t ? 'white' : (darkMode ? '#ccc' : '#333') }}
+          onClick={() => { setTool(t); setSelectedObj(null); setShowShapeMenu(false); setShowFontMenu(false); }}
+          title={label}>{icon}</button>
+      );
 
       if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 40, height: 40 }}></div><p style={{ marginTop: '1rem', color: darkMode ? '#aaa' : '#888' }}>Loading drawings...</p></div>;
 
@@ -276,31 +576,101 @@
                 <div style={{ padding: '10px' }}>
                   <p style={{ fontSize: '13px', fontWeight: '500', color: darkMode ? '#f5f5f5' : '#2c2c2a', marginBottom: '4px' }}>{d.name}</p>
                   <p style={{ fontSize: '11px', color: darkMode ? '#888' : '#aaa', marginBottom: '8px' }}>{d.date}</p>
-                  <button onClick={() => handleDelete(d.id)} style={{ padding: '4px 8px', background: '#e24b4a', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>Delete</button>
+                  <button onClick={() => handleDeleteDrawing(d.id)} style={{ padding: '4px 8px', background: '#e24b4a', color: 'white', border: 'none', borderRadius: '4px', fontSize: '11px', cursor: 'pointer' }}>Delete</button>
                 </div>
               </div>
             ))}</div>
           ) : (
             <div className="drawing-canvas-container">
+              {/* Toolbar Row 1: Tools */}
               <div className="drawing-toolbar" style={{ background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' }}>
-                <div className="color-picker-container">
-                  {colors.map(c => <div key={c} className={'color-swatch ' + (brushColor === c && tool === 'brush' ? 'active' : '')} style={{ backgroundColor: c, border: c === '#ffffff' ? '1px solid #ccc' : 'none' }} onClick={() => { setBrushColor(c); setTool('brush'); }} />)}
-                  <input type="color" value={brushColor} onChange={(e) => { setBrushColor(e.target.value); setTool('brush'); }} style={{ width: 28, height: 28, border: 'none', cursor: 'pointer' }} />
+                <div className="drawing-toolbar-section">
+                  <ToolBtn t="brush" icon="✏️" label="Brush" />
+                  <ToolBtn t="eraser" icon="🧹" label="Eraser" />
+                  <ToolBtn t="select" icon="👆" label="Select/Move" />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 12, color: darkMode ? '#ccc' : '#666' }}>Size:</span>
-                  <input type="range" min="1" max="30" value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="brush-size-slider" />
-                  <span style={{ fontSize: 12, color: darkMode ? '#ccc' : '#666', minWidth: 20 }}>{brushSize}</span>
+                <div className="drawing-toolbar-section" style={{ position: 'relative' }}>
+                  <button className={'dtool-btn' + (tool === 'shape' ? ' active' : '')}
+                    style={{ background: tool === 'shape' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'shape' ? 'white' : (darkMode ? '#ccc' : '#333') }}
+                    onClick={() => { setTool('shape'); setShowShapeMenu(!showShapeMenu); setShowFontMenu(false); }}>
+                    {shapes.find(s => s.id === shapeType)?.icon || '▭'} Shapes ▾
+                  </button>
+                  {showShapeMenu && <div className="shape-dropdown" style={{ background: darkMode ? '#333' : 'white', borderColor: darkMode ? '#555' : '#d3d1c7' }}>
+                    {shapes.map(s => <button key={s.id} onClick={() => { setShapeType(s.id); setShowShapeMenu(false); setTool('shape'); }} title={s.label} style={{ color: darkMode ? '#eee' : '#333', background: shapeType === s.id ? (darkMode ? '#1D9E75' : '#e8f5e9') : 'transparent' }}>{s.icon}</button>)}
+                  </div>}
                 </div>
-                <button onClick={() => setTool('brush')} style={{ padding: '6px 12px', background: tool === 'brush' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'brush' ? 'white' : (darkMode ? '#ccc' : '#333'), border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>✏️ Brush</button>
-                <button onClick={() => setTool('eraser')} style={{ padding: '6px 12px', background: tool === 'eraser' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'eraser' ? 'white' : (darkMode ? '#ccc' : '#333'), border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>🧹 Eraser</button>
-                <button onClick={clearCanvas} style={{ padding: '6px 12px', background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>🗑️ Clear</button>
+                <div className="drawing-toolbar-section" style={{ position: 'relative' }}>
+                  <button className={'dtool-btn' + (tool === 'text' ? ' active' : '')}
+                    style={{ background: tool === 'text' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'text' ? 'white' : (darkMode ? '#ccc' : '#333') }}
+                    onClick={() => { setTool('text'); setShowFontMenu(!showFontMenu); setShowShapeMenu(false); }}>
+                    🔤 Text ▾
+                  </button>
+                  {showFontMenu && <div className="font-dropdown" style={{ background: darkMode ? '#333' : 'white', borderColor: darkMode ? '#555' : '#d3d1c7' }}>
+                    {fonts.map(f => <button key={f} onClick={() => { setFontFamily(f); setShowFontMenu(false); }} style={{ fontFamily: f, color: darkMode ? '#eee' : '#333', background: fontFamily === f ? (darkMode ? '#1D9E75' : '#e8f5e9') : 'transparent' }}>{f}</button>)}
+                    <div style={{ padding: '6px 8px', borderTop: '1px solid ' + (darkMode ? '#555' : '#eee'), display: 'flex', gap: 4, marginTop: 4 }}>
+                      {['normal','bold','italic'].map(s => <button key={s} className={'dtool-btn' + (fontStyle === s ? ' active' : '')} style={{ flex:1, background: fontStyle===s?'#1D9E75':(darkMode?'#444':'#f0f0f0'), color: fontStyle===s?'white':(darkMode?'#ccc':'#333'), fontStyle: s==='italic'?'italic':'normal', fontWeight: s==='bold'?'bold':'normal' }} onClick={() => setFontStyle(s)}>{s==='normal'?'N':s==='bold'?'B':'I'}</button>)}
+                    </div>
+                    <div style={{ padding: '6px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 11, color: darkMode ? '#aaa' : '#888' }}>Size:</span>
+                      <input type="range" min="12" max="72" value={fontSize} onChange={e => setFontSize(+e.target.value)} style={{ flex: 1 }} />
+                      <span style={{ fontSize: 11, color: darkMode ? '#aaa' : '#888', minWidth: 20 }}>{fontSize}</span>
+                    </div>
+                  </div>}
+                </div>
+                <div className="drawing-toolbar-section">
+                  <ToolBtn t="fill" icon="🪣" label="Fill" />
+                </div>
+                <div className="drawing-toolbar-section">
+                  <button className="dtool-btn" style={{ background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333' }} onClick={undo} title="Undo">↩️</button>
+                  <button className="dtool-btn" style={{ background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333' }} onClick={redo} title="Redo">↪️</button>
+                  <button className="dtool-btn" style={{ background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333' }} onClick={deleteSelected} title="Delete Selected" disabled={selectedObj===null}>🗑️</button>
+                  {selectedObj !== null && objectsRef.current[selectedObj]?.type === 'shape' && (
+                    <button className="dtool-btn" style={{ background: objectsRef.current[selectedObj]?.filled ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: objectsRef.current[selectedObj]?.filled ? 'white' : (darkMode ? '#ccc' : '#333') }} onClick={fillSelected} title="Toggle Fill">🎨 Fill</button>
+                  )}
+                  <button className="dtool-btn" style={{ background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333' }} onClick={clearCanvas} title="Clear All">🗑️ All</button>
+                </div>
               </div>
-              <canvas ref={canvasRef} width={760} height={450} style={{ display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair', touchAction: 'none', width: '100%' }} onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerLeave={stopDrawing} onPointerCancel={stopDrawing} />
-              <div style={{ padding: 15, display: 'flex', gap: 10, alignItems: 'center', background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderTop: '1px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
+              {/* Toolbar Row 2: Colors & Size */}
+              <div className="drawing-toolbar" style={{ background: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.015)', borderBottom: '1px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
+                <div className="drawing-toolbar-section">
+                  <span style={{ fontSize: 11, color: darkMode ? '#aaa' : '#888' }}>Stroke:</span>
+                  <div className="color-picker-container">
+                    {colors.map(c => <div key={c} className={'color-swatch ' + (brushColor === c ? 'active' : '')} style={{ backgroundColor: c, border: c === '#ffffff' ? '1px solid #ccc' : 'none' }} onClick={() => setBrushColor(c)} />)}
+                    <input type="color" value={brushColor} onChange={e => setBrushColor(e.target.value)} style={{ width: 22, height: 22, border: 'none', cursor: 'pointer' }} />
+                  </div>
+                </div>
+                <div className="drawing-toolbar-section">
+                  <span style={{ fontSize: 11, color: darkMode ? '#aaa' : '#888' }}>Fill:</span>
+                  <div className="color-picker-container">
+                    {colors.slice(0, 6).map(c => <div key={'f'+c} className={'color-swatch ' + (fillColor === c ? 'active' : '')} style={{ backgroundColor: c, border: c === '#ffffff' ? '1px solid #ccc' : 'none' }} onClick={() => setFillColor(c)} />)}
+                    <input type="color" value={fillColor} onChange={e => setFillColor(e.target.value)} style={{ width: 22, height: 22, border: 'none', cursor: 'pointer' }} />
+                  </div>
+                </div>
+                <div className="drawing-toolbar-section">
+                  <span style={{ fontSize: 11, color: darkMode ? '#aaa' : '#888' }}>Size:</span>
+                  <input type="range" min="1" max="30" value={brushSize} onChange={e => setBrushSize(+e.target.value)} className="brush-size-slider" />
+                  <span style={{ fontSize: 11, color: darkMode ? '#aaa' : '#888', minWidth: 16 }}>{brushSize}</span>
+                </div>
+              </div>
+              {/* Canvas area */}
+              <div style={{ position: 'relative' }}>
+                <canvas ref={canvasRef} width={900} height={520} style={{ display: 'block', cursor: cursorStyle, touchAction: 'none', width: '100%' }} onPointerDown={handleDown} onPointerMove={wrappedMove} onPointerUp={handleUp} onPointerLeave={handleUp} onPointerCancel={handleUp} />
+                <canvas ref={overlayRef} width={900} height={520} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
+                {textPos && (
+                  <div style={{ position: 'absolute', left: (textPos.x / 900 * 100) + '%', top: (textPos.y / 520 * 100) + '%', zIndex: 10 }}>
+                    <input autoFocus type="text" value={textInput} onChange={e => setTextInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitText(); if (e.key === 'Escape') { setTextPos(null); setTextInput(''); } }}
+                      style={{ fontSize: fontSize * 0.55, fontFamily, fontWeight: fontStyle === 'bold' ? 'bold' : 'normal', fontStyle: fontStyle === 'italic' ? 'italic' : 'normal', color: brushColor, background: 'rgba(255,255,255,0.9)', border: '2px solid #1D9E75', borderRadius: 4, padding: '4px 8px', outline: 'none', minWidth: 120 }}
+                      placeholder="Type here..." />
+                    <button onClick={commitText} style={{ marginLeft: 4, padding: '4px 10px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>✓</button>
+                  </div>
+                )}
+              </div>
+              {/* Save bar */}
+              <div style={{ padding: 12, display: 'flex', gap: 8, alignItems: 'center', background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderTop: '1px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
                 <input type="text" placeholder="Drawing name..." value={currentDrawingName} onChange={e => setCurrentDrawingName(e.target.value)} style={{ flex: 1, padding: '8px 12px', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, background: darkMode ? '#333' : '#fff', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14 }} />
                 <button onClick={saveDrawing} style={{ padding: '8px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>💾 Save</button>
-                <button onClick={downloadDrawing} style={{ padding: '8px 16px', background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>⬇️ Download</button>
+                <button onClick={downloadDrawing} style={{ padding: '8px 16px', background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14 }}>⬇️</button>
               </div>
             </div>
           )}
