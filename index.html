@@ -337,9 +337,9 @@
       // ---- Canvas page curl drawing engine ----
       const drawBook = useCallback(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        if (!canvas || !canvas._logicalW) return;
         const ctx = canvas.getContext('2d');
-        const W = canvas.width, H = canvas.height;
+        const W = canvas._logicalW, H = canvas._logicalH;
         const halfW = W / 2;
         const fs = flipStateRef.current;
         const li = currentPage, ri = currentPage + 1;
@@ -502,10 +502,13 @@
               }
 
               ctx.save();
-              // Clip to the book area
+              // Clip to the book area (don't let strips bleed outside)
               ctx.beginPath();
               ctx.rect(0, 0, W, H);
               ctx.clip();
+
+              // Skip if strip is entirely outside visible area
+              if (newX + stripW < 0 || newX > W) { ctx.restore(); continue; }
 
               // Draw strip
               const sx = stripPos * pageW; // source x in page image
@@ -614,6 +617,9 @@
               ctx.save();
               ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
 
+              // Skip if strip is entirely outside visible area
+              if (newX + stripW < 0 || newX > W) { ctx.restore(); continue; }
+
               // Paper background
               const brightness = 1 - normalizedDist * 0.08;
               ctx.fillStyle = 'rgb(' + Math.round(255 * brightness) + ',' + Math.round(253 * brightness) + ',' + Math.round(247 * brightness) + ')';
@@ -712,7 +718,7 @@
         canvas.style.width = rect.width + 'px';
         canvas.style.height = rect.height + 'px';
         const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // reset then scale (avoids cumulative scale)
         // Store logical size for drawing
         canvas._logicalW = rect.width;
         canvas._logicalH = rect.height;
