@@ -426,10 +426,20 @@
           const innerGrad = ctx.createLinearGradient(halfW - 15, 0, halfW, 0);
           innerGrad.addColorStop(0, 'transparent'); innerGrad.addColorStop(1, 'rgba(0,0,0,0.04)');
           ctx.fillStyle = innerGrad; ctx.fillRect(halfW - 15, 0, 15, H);
-          // Page number
-          ctx.font = 'italic 11px "EB Garamond", serif';
-          ctx.fillStyle = '#8B7355';
-          ctx.fillText(pageIdx + 1, 20, H - 12);
+          // Page number - clear badge at bottom
+          ctx.font = '600 13px "EB Garamond", serif';
+          const pnText = String(pageIdx + 1);
+          const pnW = ctx.measureText(pnText).width + 16;
+          const pnX = 14;
+          const pnY = H - 28;
+          ctx.fillStyle = 'rgba(139,115,85,0.12)';
+          ctx.beginPath();
+          ctx.roundRect(pnX, pnY, pnW, 20, 4);
+          ctx.fill();
+          ctx.fillStyle = '#5a4a38';
+          ctx.textAlign = 'center';
+          ctx.fillText(pnText, pnX + pnW / 2, pnY + 15);
+          ctx.textAlign = 'start';
           ctx.restore();
         };
 
@@ -451,10 +461,19 @@
           ctx.fillStyle = innerGrad; ctx.fillRect(halfW, 0, 15, H);
           // Page number
           if (pageIdx < totalPages) {
-            ctx.font = 'italic 11px "EB Garamond", serif';
-            ctx.fillStyle = '#8B7355';
-            ctx.textAlign = 'right';
-            ctx.fillText(pageIdx + 1, W - 20, H - 12);
+            ctx.font = '600 13px "EB Garamond", serif';
+            const pnText = String(pageIdx + 1);
+            const pnW = ctx.measureText(pnText).width + 16;
+            const pnX = W - 14 - pnW;
+            const pnY = H - 28;
+            ctx.fillStyle = 'rgba(139,115,85,0.12)';
+            ctx.beginPath();
+            ctx.roundRect(pnX, pnY, pnW, 20, 4);
+            ctx.fill();
+            ctx.fillStyle = '#5a4a38';
+            ctx.textAlign = 'center';
+            ctx.fillText(pnText, pnX + pnW / 2, pnY + 15);
+            ctx.textAlign = 'start';
           } else {
             ctx.font = '18px "EB Garamond", serif';
             ctx.fillStyle = '#888';
