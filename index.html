@@ -18,7 +18,7 @@
     body { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     .light-mode { background: linear-gradient(135deg, #f5f3ef 0%, #e8e4dd 100%); color: #2c2c2a; }
     .dark-mode { background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%); color: #f5f5f5; }
-    .book-container { display: flex; justify-content: center; align-items: center; min-height: 550px; user-select: none; }
+    .book-container { display: flex; justify-content: center; align-items: center; min-height: 550px; user-select: none; gap: 12px; position: relative; }
     .book-maximized { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 9999; background: rgba(30,25,20,0.97); display: flex; flex-direction: column; }
     .book-wrapper {
       position: relative; width: clamp(320px, 85vw, 900px); height: clamp(240px, 60vw, 620px);
@@ -46,20 +46,17 @@
     }
     /* Navigation arrows */
     .nav-arrow {
-      position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 70px; z-index: 20;
-      background: rgba(139,69,19,0.08); border: 1px solid rgba(139,69,19,0.15); border-radius: 8px;
+      width: 44px; height: 70px; z-index: 20; flex-shrink: 0;
+      background: rgba(139,69,19,0.1); border: 1px solid rgba(139,69,19,0.2); border-radius: 8px;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       font-size: 20px; color: #8B4513; transition: all 0.3s;
     }
-    .nav-arrow:hover { background: rgba(139,69,19,0.2); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .nav-arrow:hover { background: rgba(139,69,19,0.25); box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
     .nav-arrow:disabled { opacity: 0.2; cursor: default; }
-    .nav-arrow:disabled:hover { background: rgba(139,69,19,0.08); box-shadow: none; }
-    .nav-arrow.prev { left: -55px; }
-    .nav-arrow.next { right: -55px; }
+    .nav-arrow:disabled:hover { background: rgba(139,69,19,0.1); box-shadow: none; }
     @media (max-width: 700px) {
-      .nav-arrow.prev { left: 4px; }
-      .nav-arrow.next { right: 4px; }
-      .nav-arrow { width: 32px; height: 50px; font-size: 14px; background: rgba(139,69,19,0.25); }
+      .nav-arrow { width: 32px; height: 50px; font-size: 14px; background: rgba(139,69,19,0.2); }
+      .book-container { gap: 6px; }
       .book-wrapper { height: clamp(220px, 70vh, 500px); }
     }
     .drawing-canvas-container { position: relative; border: 2px solid #d3d1c7; border-radius: 12px; overflow: hidden; background: white; }
@@ -421,251 +418,168 @@
           ctx.restore();
         };
 
-        // ---- Draw page curl (the real magic) ----
+        // ---- Draw page curl (gradient-based, no strip overflow) ----
         const drawPageCurl = (progress, direction) => {
-          // progress: 0 = flat, 1 = fully flipped
-          // direction: 'next' = right page curling left; 'prev' = left page curling right
-          if (progress <= 0.001) return;
-          if (progress >= 0.999) return;
-
+          if (progress <= 0.001 || progress >= 0.999) return;
           const t = progress;
-          // Curl geometry: the fold line moves from one edge to the other
-          // curlX: where the fold line hits the page (relative to page origin)
+          const curlAmount = Math.sin(t * Math.PI); // peaks at midpoint
           const pageW = halfW;
-          const curlX = direction === 'next'
-            ? pageW * (1 - t * 2) // starts at right edge, moves left past spine
-            : pageW * (t * 2 - 1); // starts at left edge, moves right past spine
-
-          // The curl radius determines how "round" the fold is
-          const curlRadius = pageW * 0.15 * Math.sin(t * Math.PI); // biggest curl at midpoint
-          const foldAngle = t * Math.PI; // 0 to PI
 
           if (direction === 'next') {
-            // Flipping right page to left
-            const originX = halfW; // spine position
+            // Fold line sweeps from right edge to spine
+            const foldX = halfW + pageW * (1 - t);
+            const visibleWidth = foldX - halfW;
 
-            // 1. Shadow on the right page underneath
+            // 1. Shadow cast on the underlying right page
             ctx.save();
-            ctx.beginPath(); ctx.rect(halfW, 0, halfW, H); ctx.clip();
-            const shadowWidth = Math.abs(curlX) + curlRadius * 2;
-            const shadowX = originX + curlX - curlRadius;
-            const shadowGrad = ctx.createLinearGradient(shadowX, 0, shadowX + shadowWidth, 0);
-            shadowGrad.addColorStop(0, 'rgba(0,0,0,' + (0.3 * Math.sin(t * Math.PI)) + ')');
-            shadowGrad.addColorStop(0.4, 'rgba(0,0,0,' + (0.12 * Math.sin(t * Math.PI)) + ')');
-            shadowGrad.addColorStop(1, 'transparent');
-            ctx.fillStyle = shadowGrad;
-            ctx.fillRect(shadowX, 0, shadowWidth, H);
+            ctx.beginPath(); ctx.rect(foldX, 0, halfW, H); ctx.clip();
+            const sw = 20 + curlAmount * 50;
+            const sg = ctx.createLinearGradient(foldX, 0, foldX + sw, 0);
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.4 * curlAmount) + ')');
+            sg.addColorStop(0.3, 'rgba(0,0,0,' + (0.15 * curlAmount) + ')');
+            sg.addColorStop(1, 'transparent');
+            ctx.fillStyle = sg; ctx.fillRect(foldX, 0, sw, H);
             ctx.restore();
 
-            // 2. Also draw a shadow on the left page when curl is past spine
-            if (t > 0.45) {
+            // 2. Shadow on left page when curl crosses spine (t > 0.5)
+            if (t > 0.5) {
               ctx.save();
               ctx.beginPath(); ctx.rect(0, 0, halfW, H); ctx.clip();
-              const leftProgress = (t - 0.45) / 0.55;
-              const leftShadowW = halfW * leftProgress * 0.6;
-              const lsg = ctx.createLinearGradient(halfW, 0, halfW - leftShadowW, 0);
-              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.25 * leftProgress) + ')');
+              const lp = (t - 0.5) / 0.5;
+              const lsw = halfW * lp * 0.5;
+              const lsg = ctx.createLinearGradient(halfW, 0, halfW - lsw, 0);
+              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.25 * lp) + ')');
               lsg.addColorStop(1, 'transparent');
-              ctx.fillStyle = lsg; ctx.fillRect(halfW - leftShadowW, 0, leftShadowW, H);
+              ctx.fillStyle = lsg; ctx.fillRect(halfW - lsw, 0, lsw, H);
               ctx.restore();
             }
 
-            // 3. Draw the curled page using vertical strips for curved appearance
-            const numStrips = 20;
-            const stripW = pageW / numStrips;
-            const frontPageImg = getPageImg(ri);
-            const backPageImg = getPageImg(ri + 1);
-
-            for (let i = 0; i < numStrips; i++) {
-              const stripPos = i / numStrips; // 0 to 1 across the page
-              // Calculate where this strip is after the curl
-              const stripOrigX = originX + stripPos * pageW; // original position
-              const distFromFold = stripPos * pageW - (curlX + pageW * t);
-              
-              // Each strip rotates around the fold line
-              const stripAngle = foldAngle;
-              const foldLineX = originX + pageW * (1 - t);
-              const distFromFoldLine = stripOrigX - foldLineX;
-              
-              let newX, showing;
-              if (distFromFoldLine >= 0) {
-                // Strip hasn't been flipped yet — still showing front, stays in place
-                continue; // these are already drawn by drawRightPage underneath
-              } else {
-                // Strip has been flipped — show back side, mirror position
-                newX = foldLineX + distFromFoldLine * Math.cos(Math.PI); // reflected
-                // Add curl offset (curved shape)
-                const normalizedDist = Math.abs(distFromFoldLine) / pageW;
-                const curlOffset = curlRadius * Math.sin(normalizedDist * Math.PI * 0.8);
-                newX = foldLineX - distFromFoldLine - curlOffset;
-                showing = 'back';
-              }
-
+            // 3. Draw back page content in the curled region
+            if (visibleWidth > 2) {
               ctx.save();
-              // Clip to the book area (don't let strips bleed outside)
-              ctx.beginPath();
-              ctx.rect(0, 0, W, H);
-              ctx.clip();
+              ctx.beginPath(); ctx.rect(halfW, 0, visibleWidth, H); ctx.clip();
 
-              // Skip if strip is entirely outside visible area
-              if (newX + stripW < 0 || newX > W) { ctx.restore(); continue; }
+              // Paper background
+              const pgBg = ctx.createLinearGradient(halfW, 0, foldX, 0);
+              pgBg.addColorStop(0, '#efe9de'); pgBg.addColorStop(0.12, '#fffdf7'); pgBg.addColorStop(1, '#f5f0e6');
+              ctx.fillStyle = pgBg; ctx.fillRect(halfW, 0, visibleWidth, H);
 
-              // Draw strip
-              const sx = stripPos * pageW; // source x in page image
-              
-              // Paper background for strip
-              const brightness = 1 - Math.abs(distFromFoldLine) / pageW * 0.08;
-              ctx.fillStyle = 'rgb(' + Math.round(255 * brightness) + ',' + Math.round(253 * brightness) + ',' + Math.round(247 * brightness) + ')';
-              ctx.fillRect(newX, 0, stripW + 1, H);
-
-              // Draw image strip
-              if (backPageImg && backPageImg.complete && backPageImg.naturalWidth > 0) {
-                const imgAr = backPageImg.naturalWidth / backPageImg.naturalHeight;
+              // Draw back page image
+              const backImg = getPageImg(ri + 1);
+              if (backImg && backImg.complete && backImg.naturalWidth > 0) {
+                const imgAr = backImg.naturalWidth / backImg.naturalHeight;
                 const boxAr = pageW / H;
-                let dw, dh, dx, dy;
-                if (imgAr > boxAr) { dw = pageW * 0.92; dh = dw / imgAr; } else { dh = H * 0.92; dw = dh * imgAr; }
-                dx = (pageW - dw) / 2; dy = (H - dh) / 2;
-                // Source rect within image
-                const imgScale = backPageImg.naturalWidth / dw;
-                const srcX = (sx - dx) * imgScale;
-                const srcW = stripW * imgScale;
-                if (srcX + srcW > 0 && srcX < backPageImg.naturalWidth) {
-                  ctx.drawImage(backPageImg,
-                    Math.max(0, srcX), 0, Math.min(srcW, backPageImg.naturalWidth - Math.max(0, srcX)), backPageImg.naturalHeight,
-                    newX + (srcX < 0 ? -srcX / imgScale : 0), dy, stripW, dh);
-                }
+                let dw, dh;
+                if (imgAr > boxAr) { dw = pageW * 0.92; dh = dw / imgAr; }
+                else { dh = H * 0.92; dw = dh * imgAr; }
+                const dx = halfW + (pageW - dw) / 2;
+                const dy = (H - dh) / 2;
+                ctx.drawImage(backImg, dx, dy, dw, dh);
               }
 
-              // Light/shadow on strip for 3D illusion
-              const normalizedDist2 = Math.abs(distFromFoldLine) / pageW;
-              const lightIntensity = curlRadius > 0 ? Math.sin(normalizedDist2 * Math.PI * 0.8) : 0;
-              // Highlight near fold edge
-              if (normalizedDist2 < 0.2) {
-                ctx.fillStyle = 'rgba(255,255,255,' + (0.15 * (1 - normalizedDist2 / 0.2)) + ')';
-                ctx.fillRect(newX, 0, stripW + 1, H);
-              }
-              // Darken edges slightly
-              if (normalizedDist2 > 0.7) {
-                ctx.fillStyle = 'rgba(0,0,0,' + (0.06 * (normalizedDist2 - 0.7) / 0.3) + ')';
-                ctx.fillRect(newX, 0, stripW + 1, H);
-              }
+              // 4. Bend gradient overlay (creates 3D curl illusion)
+              const bg = ctx.createLinearGradient(halfW, 0, foldX, 0);
+              bg.addColorStop(0, 'rgba(0,0,0,0.05)');
+              bg.addColorStop(0.2, 'transparent');
+              bg.addColorStop(0.4, 'rgba(255,255,255,' + (0.1 * curlAmount) + ')');
+              bg.addColorStop(0.6, 'rgba(0,0,0,' + (0.03 * curlAmount) + ')');
+              bg.addColorStop(0.8, 'rgba(255,255,255,' + (0.15 * curlAmount) + ')');
+              bg.addColorStop(0.95, 'rgba(0,0,0,' + (0.08 * curlAmount) + ')');
+              bg.addColorStop(1, 'rgba(0,0,0,0.18)');
+              ctx.fillStyle = bg;
+              ctx.fillRect(halfW, 0, visibleWidth, H);
 
               ctx.restore();
-            }
 
-            // 4. Fold edge highlight (the visible paper edge)
-            const foldX = originX + pageW * (1 - t);
-            ctx.save();
-            const edgeW = 3 + curlRadius * 0.3;
-            const edgeGrad = ctx.createLinearGradient(foldX - edgeW, 0, foldX + 2, 0);
-            edgeGrad.addColorStop(0, 'rgba(0,0,0,0.08)');
-            edgeGrad.addColorStop(0.3, 'rgba(245,240,230,0.95)');
-            edgeGrad.addColorStop(0.6, 'rgba(255,252,245,1)');
-            edgeGrad.addColorStop(1, 'rgba(0,0,0,0.05)');
-            ctx.fillStyle = edgeGrad;
-            ctx.fillRect(foldX - edgeW, 0, edgeW + 3, H);
-            ctx.restore();
+              // 5. Fold edge (paper thickness line)
+              const ew = 2 + curlAmount * 5;
+              const eg = ctx.createLinearGradient(foldX - 1, 0, foldX + ew, 0);
+              eg.addColorStop(0, 'rgba(0,0,0,0.15)');
+              eg.addColorStop(0.2, 'rgba(240,235,225,1)');
+              eg.addColorStop(0.5, 'rgba(255,252,245,1)');
+              eg.addColorStop(0.8, 'rgba(240,235,225,0.9)');
+              eg.addColorStop(1, 'rgba(0,0,0,0.06)');
+              ctx.fillStyle = eg;
+              ctx.fillRect(foldX - 1, 0, ew + 1, H);
+            }
 
           } else {
-            // Flipping left page to right (prev direction)
-            const originX = halfW;
+            // prev: Fold line sweeps from left edge to spine
+            const foldX = halfW * t;
+            const visibleWidth = halfW - foldX;
 
-            // 1. Shadow on left page underneath
+            // 1. Shadow cast on the underlying left page
             ctx.save();
-            ctx.beginPath(); ctx.rect(0, 0, halfW, H); ctx.clip();
-            const shadowWidth = Math.abs(curlX) + curlRadius * 2;
-            const shadowX = originX + curlX + curlRadius - shadowWidth;
-            const shadowGrad = ctx.createLinearGradient(shadowX + shadowWidth, 0, shadowX, 0);
-            shadowGrad.addColorStop(0, 'rgba(0,0,0,' + (0.3 * Math.sin(t * Math.PI)) + ')');
-            shadowGrad.addColorStop(0.4, 'rgba(0,0,0,' + (0.12 * Math.sin(t * Math.PI)) + ')');
-            shadowGrad.addColorStop(1, 'transparent');
-            ctx.fillStyle = shadowGrad;
-            ctx.fillRect(shadowX, 0, shadowWidth, H);
+            ctx.beginPath(); ctx.rect(0, 0, foldX, H); ctx.clip();
+            const sw = 20 + curlAmount * 50;
+            const sg = ctx.createLinearGradient(foldX, 0, foldX - sw, 0);
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.4 * curlAmount) + ')');
+            sg.addColorStop(0.3, 'rgba(0,0,0,' + (0.15 * curlAmount) + ')');
+            sg.addColorStop(1, 'transparent');
+            ctx.fillStyle = sg; ctx.fillRect(foldX - sw, 0, sw, H);
             ctx.restore();
 
             // 2. Shadow on right page when past spine
-            if (t > 0.45) {
+            if (t > 0.5) {
               ctx.save();
               ctx.beginPath(); ctx.rect(halfW, 0, halfW, H); ctx.clip();
-              const rightProgress = (t - 0.45) / 0.55;
-              const rightShadowW = halfW * rightProgress * 0.6;
-              const rsg = ctx.createLinearGradient(halfW, 0, halfW + rightShadowW, 0);
-              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.25 * rightProgress) + ')');
+              const rp = (t - 0.5) / 0.5;
+              const rsw = halfW * rp * 0.5;
+              const rsg = ctx.createLinearGradient(halfW, 0, halfW + rsw, 0);
+              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.25 * rp) + ')');
               rsg.addColorStop(1, 'transparent');
-              ctx.fillStyle = rsg; ctx.fillRect(halfW, 0, rightShadowW, H);
+              ctx.fillStyle = rsg; ctx.fillRect(halfW, 0, rsw, H);
               ctx.restore();
             }
 
-            // 3. Draw the curled page strips
-            const numStrips = 20;
-            const stripW = halfW / numStrips;
-            const backPageImg = getPageImg(li - 1);
-
-            for (let i = numStrips - 1; i >= 0; i--) {
-              const stripPos = i / numStrips;
-              const stripOrigX = stripPos * halfW;
-              const foldLineX = halfW * t;
-              const distFromFoldLine = stripOrigX - foldLineX;
-
-              if (distFromFoldLine < 0) continue; // not yet flipped
-
-              let newX;
-              const normalizedDist = Math.abs(distFromFoldLine) / halfW;
-              const curlOffset = curlRadius * Math.sin(normalizedDist * Math.PI * 0.8);
-              newX = foldLineX + distFromFoldLine + curlOffset;
-
+            // 3. Draw back page content in the curled region
+            if (visibleWidth > 2) {
               ctx.save();
-              ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
-
-              // Skip if strip is entirely outside visible area
-              if (newX + stripW < 0 || newX > W) { ctx.restore(); continue; }
+              ctx.beginPath(); ctx.rect(foldX, 0, visibleWidth, H); ctx.clip();
 
               // Paper background
-              const brightness = 1 - normalizedDist * 0.08;
-              ctx.fillStyle = 'rgb(' + Math.round(255 * brightness) + ',' + Math.round(253 * brightness) + ',' + Math.round(247 * brightness) + ')';
-              ctx.fillRect(newX, 0, stripW + 1, H);
+              const pgBg = ctx.createLinearGradient(foldX, 0, halfW, 0);
+              pgBg.addColorStop(0, '#f5f0e6'); pgBg.addColorStop(0.88, '#fffdf7'); pgBg.addColorStop(1, '#efe9de');
+              ctx.fillStyle = pgBg; ctx.fillRect(foldX, 0, visibleWidth, H);
 
-              // Draw image strip (mirrored for back)
-              if (backPageImg && backPageImg.complete && backPageImg.naturalWidth > 0) {
-                const imgAr = backPageImg.naturalWidth / backPageImg.naturalHeight;
+              // Draw back page image
+              const backImg = getPageImg(li - 1);
+              if (backImg && backImg.complete && backImg.naturalWidth > 0) {
+                const imgAr = backImg.naturalWidth / backImg.naturalHeight;
                 const boxAr = halfW / H;
-                let dw, dh, dx, dy;
-                if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; } else { dh = H * 0.92; dw = dh * imgAr; }
-                dx = (halfW - dw) / 2; dy = (H - dh) / 2;
-                const imgScale = backPageImg.naturalWidth / dw;
-                const srcX = ((1 - stripPos) * halfW - dx) * imgScale;
-                const srcW = stripW * imgScale;
-                if (srcX + srcW > 0 && srcX < backPageImg.naturalWidth) {
-                  ctx.drawImage(backPageImg,
-                    Math.max(0, srcX), 0, Math.min(srcW, backPageImg.naturalWidth - Math.max(0, srcX)), backPageImg.naturalHeight,
-                    newX, dy, stripW, dh);
-                }
+                let dw, dh;
+                if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
+                else { dh = H * 0.92; dw = dh * imgAr; }
+                const dx = (halfW - dw) / 2;
+                const dy = (H - dh) / 2;
+                ctx.drawImage(backImg, dx, dy, dw, dh);
               }
 
-              // Lighting
-              if (normalizedDist < 0.2) {
-                ctx.fillStyle = 'rgba(255,255,255,' + (0.15 * (1 - normalizedDist / 0.2)) + ')';
-                ctx.fillRect(newX, 0, stripW + 1, H);
-              }
-              if (normalizedDist > 0.7) {
-                ctx.fillStyle = 'rgba(0,0,0,' + (0.06 * (normalizedDist - 0.7) / 0.3) + ')';
-                ctx.fillRect(newX, 0, stripW + 1, H);
-              }
+              // 4. Bend gradient overlay
+              const bg = ctx.createLinearGradient(foldX, 0, halfW, 0);
+              bg.addColorStop(0, 'rgba(0,0,0,0.18)');
+              bg.addColorStop(0.05, 'rgba(0,0,0,' + (0.08 * curlAmount) + ')');
+              bg.addColorStop(0.2, 'rgba(255,255,255,' + (0.15 * curlAmount) + ')');
+              bg.addColorStop(0.4, 'rgba(0,0,0,' + (0.03 * curlAmount) + ')');
+              bg.addColorStop(0.6, 'rgba(255,255,255,' + (0.1 * curlAmount) + ')');
+              bg.addColorStop(0.8, 'transparent');
+              bg.addColorStop(1, 'rgba(0,0,0,0.05)');
+              ctx.fillStyle = bg;
+              ctx.fillRect(foldX, 0, visibleWidth, H);
+
               ctx.restore();
-            }
 
-            // 4. Fold edge
-            const foldX = halfW * t;
-            ctx.save();
-            const edgeW = 3 + curlRadius * 0.3;
-            const edgeGrad = ctx.createLinearGradient(foldX - 2, 0, foldX + edgeW, 0);
-            edgeGrad.addColorStop(0, 'rgba(0,0,0,0.05)');
-            edgeGrad.addColorStop(0.4, 'rgba(255,252,245,1)');
-            edgeGrad.addColorStop(0.7, 'rgba(245,240,230,0.95)');
-            edgeGrad.addColorStop(1, 'rgba(0,0,0,0.08)');
-            ctx.fillStyle = edgeGrad;
-            ctx.fillRect(foldX - 2, 0, edgeW + 3, H);
-            ctx.restore();
+              // 5. Fold edge
+              const ew = 2 + curlAmount * 5;
+              const eg = ctx.createLinearGradient(foldX - ew, 0, foldX + 1, 0);
+              eg.addColorStop(0, 'rgba(0,0,0,0.06)');
+              eg.addColorStop(0.2, 'rgba(240,235,225,0.9)');
+              eg.addColorStop(0.5, 'rgba(255,252,245,1)');
+              eg.addColorStop(0.8, 'rgba(240,235,225,1)');
+              eg.addColorStop(1, 'rgba(0,0,0,0.15)');
+              ctx.fillStyle = eg;
+              ctx.fillRect(foldX - ew, 0, ew + 1, H);
+            }
           }
         };
 
@@ -1009,13 +923,13 @@
             <button onClick={() => { setIsMaximized(!isMaximized); setPageImages({}); pageImgCacheRef.current = {}; setTimeout(updateCanvasSize, 100); }} style={{ padding: '7px 14px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>{isMaximized ? '🗗 Minimize' : '🗖 Maximize'}</button>
           </div>
           <div className="book-container" style={isMaximized ? { flex: 1, minHeight: 0, alignItems: 'center' } : {}}>
+            <button className="nav-arrow" onClick={() => turnPage('prev')} disabled={currentPage === 0 || !!flipStateRef.current}>◀</button>
             <div className={'book-wrapper' + (isMaximized ? ' maximized' : '')} ref={bookWrapperRef}>
               <canvas ref={canvasRef} className="book-canvas"
                 onMouseDown={handlePointerDown} onTouchStart={handlePointerDown} />
               <div className="book-shadow"></div>
-              <button className="nav-arrow prev" onClick={() => turnPage('prev')} disabled={currentPage === 0 || !!flipStateRef.current}>◀</button>
-              <button className="nav-arrow next" onClick={() => turnPage('next')} disabled={currentPage >= totalPages - 2 || !!flipStateRef.current}>▶</button>
             </div>
+            <button className="nav-arrow" onClick={() => turnPage('next')} disabled={currentPage >= totalPages - 2 || !!flipStateRef.current}>▶</button>
           </div>
           <div style={{ textAlign: 'center', marginTop: isMaximized ? '0.3rem' : '1rem', padding: isMaximized ? '0 20px 8px' : 0, color: isMaximized ? '#999' : (darkMode ? '#aaa' : '#666') }}>
             <p style={{ fontSize: 13, marginBottom: 6, fontFamily: 'EB Garamond, serif' }}>Pages {li + 1}–{Math.min(ri + 1, totalPages)} of {totalPages}</p>
