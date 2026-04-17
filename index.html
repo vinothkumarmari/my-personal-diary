@@ -196,6 +196,7 @@
       const [showSaved, setShowSaved] = useState(false);
       const [syncing, setSyncing] = useState(null);
       const [loading, setLoading] = useState(true);
+      const lastPressureRef = useRef(0.5);
       const firestore = useFirestore(userId);
       const colors = ['#000000','#e24b4a','#1D9E75','#3b82f6','#f59e0b','#8b5cf6','#ec4899','#6b7280','#ffffff'];
 
@@ -205,8 +206,38 @@
         if (c) { const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
       }, []);
 
-      const startDrawing = (e) => { const c = canvasRef.current; const r = c.getBoundingClientRect(); const x = (e.clientX || e.touches?.[0]?.clientX) - r.left; const y = (e.clientY || e.touches?.[0]?.clientY) - r.top; const ctx = c.getContext('2d'); ctx.beginPath(); ctx.moveTo(x, y); setIsDrawing(true); };
-      const draw = (e) => { if (!isDrawing) return; e.preventDefault(); const c = canvasRef.current; const r = c.getBoundingClientRect(); const x = (e.clientX || e.touches?.[0]?.clientX) - r.left; const y = (e.clientY || e.touches?.[0]?.clientY) - r.top; const ctx = c.getContext('2d'); ctx.lineTo(x, y); ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : brushColor; ctx.lineWidth = tool === 'eraser' ? brushSize * 3 : brushSize; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke(); };
+      const startDrawing = (e) => {
+        e.preventDefault();
+        const c = canvasRef.current;
+        const r = c.getBoundingClientRect();
+        const scaleX = c.width / r.width, scaleY = c.height / r.height;
+        const x = (e.clientX - r.left) * scaleX;
+        const y = (e.clientY - r.top) * scaleY;
+        const ctx = c.getContext('2d');
+        ctx.beginPath(); ctx.moveTo(x, y);
+        setIsDrawing(true);
+        lastPressureRef.current = e.pressure || 0.5;
+      };
+      const draw = (e) => {
+        if (!isDrawing) return;
+        e.preventDefault();
+        const c = canvasRef.current;
+        const r = c.getBoundingClientRect();
+        const scaleX = c.width / r.width, scaleY = c.height / r.height;
+        const x = (e.clientX - r.left) * scaleX;
+        const y = (e.clientY - r.top) * scaleY;
+        const pressure = e.pressure !== undefined ? e.pressure : 0.5;
+        const ctx = c.getContext('2d');
+        ctx.lineTo(x, y);
+        ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : brushColor;
+        const baseSize = tool === 'eraser' ? brushSize * 3 : brushSize;
+        ctx.lineWidth = baseSize * (0.4 + pressure * 0.6);
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.globalAlpha = tool === 'eraser' ? 1 : Math.max(0.3, pressure);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        lastPressureRef.current = pressure;
+      };
       const stopDrawing = () => setIsDrawing(false);
       const clearCanvas = () => { const c = canvasRef.current; const ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); };
 
@@ -261,7 +292,7 @@
                 <button onClick={() => setTool('eraser')} style={{ padding: '6px 12px', background: tool === 'eraser' ? '#1D9E75' : (darkMode ? '#444' : '#f0f0f0'), color: tool === 'eraser' ? 'white' : (darkMode ? '#ccc' : '#333'), border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>🧹 Eraser</button>
                 <button onClick={clearCanvas} style={{ padding: '6px 12px', background: darkMode ? '#444' : '#f0f0f0', color: darkMode ? '#ccc' : '#333', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: 13 }}>🗑️ Clear</button>
               </div>
-              <canvas ref={canvasRef} width={760} height={450} style={{ display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair' }} onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing} />
+              <canvas ref={canvasRef} width={760} height={450} style={{ display: 'block', cursor: tool === 'eraser' ? 'cell' : 'crosshair', touchAction: 'none', width: '100%' }} onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerLeave={stopDrawing} onPointerCancel={stopDrawing} />
               <div style={{ padding: 15, display: 'flex', gap: 10, alignItems: 'center', background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderTop: '1px solid ' + (darkMode ? '#444' : '#e0ddd5') }}>
                 <input type="text" placeholder="Drawing name..." value={currentDrawingName} onChange={e => setCurrentDrawingName(e.target.value)} style={{ flex: 1, padding: '8px 12px', border: '1px solid ' + (darkMode ? '#555' : '#d3d1c7'), borderRadius: 6, background: darkMode ? '#333' : '#fff', color: darkMode ? '#f5f5f5' : '#2c2c2a', fontSize: 14 }} />
                 <button onClick={saveDrawing} style={{ padding: '8px 20px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>💾 Save</button>
