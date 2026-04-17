@@ -493,17 +493,31 @@
 
             ctx.restore();
 
-            // 4. Fold edge (paper thickness)
+            // 4. Fold edge (solid paper thickness)
             ctx.save();
-            const ew = 3 + curlAmount * 6;
-            const eg = ctx.createLinearGradient(foldX - 1, 0, foldX + ew, 0);
-            eg.addColorStop(0, 'rgba(0,0,0,0.1)');
-            eg.addColorStop(0.15, 'rgba(248,243,233,1)');
-            eg.addColorStop(0.45, 'rgba(255,253,248,1)');
-            eg.addColorStop(0.75, 'rgba(245,240,230,0.95)');
-            eg.addColorStop(1, 'rgba(0,0,0,0.05)');
+            const ew = 5 + curlAmount * 10;
+            // Dark shadow line at fold crease
+            ctx.fillStyle = 'rgba(60,40,20,0.25)';
+            ctx.fillRect(foldX - 1, 0, 2, H);
+            // Paper stack layers
+            const eg = ctx.createLinearGradient(foldX, 0, foldX + ew, 0);
+            eg.addColorStop(0, '#d4c8b0');
+            eg.addColorStop(0.08, '#e8dfd0');
+            eg.addColorStop(0.2, '#faf5ea');
+            eg.addColorStop(0.35, '#ece5d5');
+            eg.addColorStop(0.5, '#faf7f0');
+            eg.addColorStop(0.65, '#eee7d8');
+            eg.addColorStop(0.8, '#f8f3e8');
+            eg.addColorStop(0.92, '#e5ddd0');
+            eg.addColorStop(1, 'rgba(180,160,130,0.4)');
             ctx.fillStyle = eg;
-            ctx.fillRect(foldX - 1, 0, ew + 1, H);
+            ctx.fillRect(foldX, 0, ew, H);
+            // Subtle horizontal page lines within edge
+            ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+            ctx.lineWidth = 0.5;
+            for (let ly = 8; ly < H; ly += 4) {
+              ctx.beginPath(); ctx.moveTo(foldX + 1, ly); ctx.lineTo(foldX + ew - 1, ly); ctx.stroke();
+            }
             ctx.restore();
 
           } else {
@@ -576,17 +590,31 @@
 
             ctx.restore();
 
-            // 4. Fold edge
+            // 4. Fold edge (solid paper thickness)
             ctx.save();
-            const ew = 3 + curlAmount * 6;
-            const eg = ctx.createLinearGradient(foldX - ew, 0, foldX + 1, 0);
-            eg.addColorStop(0, 'rgba(0,0,0,0.05)');
-            eg.addColorStop(0.25, 'rgba(245,240,230,0.95)');
-            eg.addColorStop(0.55, 'rgba(255,253,248,1)');
-            eg.addColorStop(0.85, 'rgba(248,243,233,1)');
-            eg.addColorStop(1, 'rgba(0,0,0,0.1)');
+            const ew = 5 + curlAmount * 10;
+            // Dark shadow line at fold crease
+            ctx.fillStyle = 'rgba(60,40,20,0.25)';
+            ctx.fillRect(foldX - 1, 0, 2, H);
+            // Paper stack layers
+            const eg = ctx.createLinearGradient(foldX - ew, 0, foldX, 0);
+            eg.addColorStop(0, 'rgba(180,160,130,0.4)');
+            eg.addColorStop(0.08, '#e5ddd0');
+            eg.addColorStop(0.2, '#f8f3e8');
+            eg.addColorStop(0.35, '#eee7d8');
+            eg.addColorStop(0.5, '#faf7f0');
+            eg.addColorStop(0.65, '#ece5d5');
+            eg.addColorStop(0.8, '#faf5ea');
+            eg.addColorStop(0.92, '#e8dfd0');
+            eg.addColorStop(1, '#d4c8b0');
             ctx.fillStyle = eg;
-            ctx.fillRect(foldX - ew, 0, ew + 1, H);
+            ctx.fillRect(foldX - ew, 0, ew, H);
+            // Subtle horizontal page lines within edge
+            ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+            ctx.lineWidth = 0.5;
+            for (let ly = 8; ly < H; ly += 4) {
+              ctx.beginPath(); ctx.moveTo(foldX - ew + 1, ly); ctx.lineTo(foldX - 1, ly); ctx.stroke();
+            }
             ctx.restore();
           }
         };
@@ -615,17 +643,19 @@
           if (fs.direction === 'next') {
             drawLeftPage(li);
             drawRightPage(ri + 2 < totalPages ? ri + 2 : totalPages);
+            drawSpine();
             drawPageCurl(fs.progress, 'next');
           } else {
             drawLeftPage(li - 2 >= 0 ? li - 2 : 0);
             drawRightPage(ri);
+            drawSpine();
             drawPageCurl(fs.progress, 'prev');
           }
         } else {
           drawLeftPage(li);
           drawRightPage(ri);
+          drawSpine();
         }
-        drawSpine();
       }, [currentPage, totalPages, getPageImg]);
 
       // ---- Resize canvas to match wrapper ----
