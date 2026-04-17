@@ -651,15 +651,30 @@
         // ---- Compose the scene ----
         if (fs && fs.progress > 0.001 && fs.progress < 0.999) {
           if (fs.direction === 'next') {
-            drawLeftPage(li);
-            drawRightPage(ri + 2 < totalPages ? ri + 2 : totalPages);
+            // Near-complete: draw destination spread to avoid flash
+            if (fs.progress > 0.97) {
+              const destLi = Math.min(li + 2, totalPages - 1);
+              const destRi = Math.min(ri + 2, totalPages);
+              drawLeftPage(destLi);
+              drawRightPage(destRi);
+            } else {
+              drawLeftPage(li);
+              drawRightPage(ri + 2 < totalPages ? ri + 2 : totalPages);
+              drawPageCurl(fs.progress, 'next');
+            }
             drawSpine();
-            drawPageCurl(fs.progress, 'next');
           } else {
-            drawLeftPage(li - 2 >= 0 ? li - 2 : 0);
-            drawRightPage(ri);
+            if (fs.progress > 0.97) {
+              const destLi = Math.max(li - 2, 0);
+              const destRi = Math.max(ri - 2, 1);
+              drawLeftPage(destLi);
+              drawRightPage(destRi);
+            } else {
+              drawLeftPage(li - 2 >= 0 ? li - 2 : 0);
+              drawRightPage(ri);
+              drawPageCurl(fs.progress, 'prev');
+            }
             drawSpine();
-            drawPageCurl(fs.progress, 'prev');
           }
         } else {
           drawLeftPage(li);
@@ -667,10 +682,9 @@
           drawSpine();
         }
 
-        // Blit offscreen to visible canvas in one operation (no flicker)
+        // Blit offscreen to visible canvas in one atomic operation (no flicker)
         const visCtx = canvas.getContext('2d');
         visCtx.setTransform(1, 0, 0, 1, 0, 0);
-        visCtx.clearRect(0, 0, canvas.width, canvas.height);
         visCtx.drawImage(off, 0, 0);
       }, [currentPage, totalPages, getPageImg]);
 
@@ -722,7 +736,9 @@
           } else {
             flipStateRef.current = null;
             if (onComplete) onComplete();
-            drawBook();
+            // Don't call drawBook() here - the onComplete setCurrentPage triggers
+            // a React re-render which calls drawBook with the correct new page.
+            // Calling it here uses the OLD closure's currentPage = wrong pages flash.
           }
         };
         animRef.current = requestAnimationFrame(tick);
@@ -852,7 +868,8 @@
                 animRef.current = requestAnimationFrame(tick);
               } else {
                 flipStateRef.current = null;
-                drawBook();
+                // Redraw static pages after snap back (no setCurrentPage triggers re-render)
+                requestAnimationFrame(() => drawBook());
               }
             };
             animRef.current = requestAnimationFrame(tick);
