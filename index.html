@@ -332,15 +332,25 @@
       }, [pageImages, totalPages]);
 
       // ---- Canvas page curl drawing engine ----
+      const offscreenRef = useRef(null);
+
       const drawBook = useCallback(() => {
         const canvas = canvasRef.current;
         if (!canvas || !canvas._logicalW) return;
-        const ctx = canvas.getContext('2d');
         const W = canvas._logicalW, H = canvas._logicalH;
         const halfW = W / 2;
         const fs = flipStateRef.current;
         const li = currentPage, ri = currentPage + 1;
 
+        // Double-buffer: draw to offscreen canvas first
+        if (!offscreenRef.current) offscreenRef.current = document.createElement('canvas');
+        const off = offscreenRef.current;
+        if (off.width !== canvas.width || off.height !== canvas.height) {
+          off.width = canvas.width; off.height = canvas.height;
+        }
+        const ctx = off.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, W, H);
 
         // Paper color
@@ -656,6 +666,12 @@
           drawRightPage(ri);
           drawSpine();
         }
+
+        // Blit offscreen to visible canvas in one operation (no flicker)
+        const visCtx = canvas.getContext('2d');
+        visCtx.setTransform(1, 0, 0, 1, 0, 0);
+        visCtx.clearRect(0, 0, canvas.width, canvas.height);
+        visCtx.drawImage(off, 0, 0);
       }, [currentPage, totalPages, getPageImg]);
 
       // ---- Resize canvas to match wrapper ----
@@ -685,8 +701,8 @@
         }
       }, [currentBook, updateCanvasSize, isMaximized]);
 
-      // Redraw when pages load
-      useEffect(() => { if (currentBook) drawBook(); }, [pageImages, currentPage, drawBook, currentBook]);
+      // Redraw when pages load (skip if animation is running - tick already calls drawBook)
+      useEffect(() => { if (currentBook && !flipStateRef.current) drawBook(); }, [pageImages, currentPage, drawBook, currentBook]);
 
       // ---- Animation loop for smooth flip ----
       const animateFlip = useCallback((direction, onComplete) => {
