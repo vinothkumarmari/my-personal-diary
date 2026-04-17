@@ -858,51 +858,70 @@
           ctx.restore();
         };
 
-        // ---- Draw page curl (solid base + gradient bend, no strip gaps) ----
+        // ---- Realistic 3D page curl with curved fold, cylinder shading & shadows ----
         const drawPageCurl = (progress, direction) => {
           if (progress <= 0.001 || progress >= 0.999) return;
           const t = progress;
-          const curlAmount = Math.sin(t * Math.PI);
+          const curlAmount = Math.sin(t * Math.PI); // peaks at mid-flip
 
           if (direction === 'next') {
+            // --- Geometry ---
             const foldX = halfW + halfW * (1 - t);
             const backImg = getPageImg(ri + 1);
-            const regionLeft = Math.max(0, 2 * foldX - W);
-            const regionW = foldX - regionLeft;
+            const curlW = Math.min(W - foldX, halfW);
+            const regionLeft = foldX - curlW;
 
-            // 1. Shadow on underlying right page
+            // Fold line curvature: bows outward (right) at the center
+            const bow = curlAmount * 24;
+
+            // Helper: trace the curved fold line path (top→bottom)
+            const traceFold = (ox) => {
+              ctx.moveTo(foldX + ox, 0);
+              ctx.bezierCurveTo(
+                foldX + bow * 0.6 + ox, H * 0.25,
+                foldX + bow + ox, H * 0.75,
+                foldX + ox, H
+              );
+            };
+
+            // === 1. Soft drop-shadow on the underlying page ===
             ctx.save();
-            ctx.beginPath(); ctx.rect(foldX, 0, W - foldX, H); ctx.clip();
-            const sw = 15 + curlAmount * 40;
+            ctx.beginPath(); traceFold(0);
+            ctx.lineTo(W, H); ctx.lineTo(W, 0); ctx.closePath(); ctx.clip();
+            const sw = 30 + curlAmount * 65;
             const sg = ctx.createLinearGradient(foldX, 0, foldX + sw, 0);
-            sg.addColorStop(0, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
-            sg.addColorStop(0.4, 'rgba(0,0,0,' + (0.1 * curlAmount) + ')');
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.52 * curlAmount) + ')');
+            sg.addColorStop(0.06, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
+            sg.addColorStop(0.22, 'rgba(0,0,0,' + (0.14 * curlAmount) + ')');
+            sg.addColorStop(0.5, 'rgba(0,0,0,' + (0.04 * curlAmount) + ')');
             sg.addColorStop(1, 'transparent');
-            ctx.fillStyle = sg; ctx.fillRect(foldX, 0, sw, H);
+            ctx.fillStyle = sg;
+            ctx.fillRect(foldX - bow - 5, 0, sw + bow + 10, H);
             ctx.restore();
 
-            // Shadow on left page when past spine
+            // Shadow spilling onto left page when fold crosses spine
             if (t > 0.45) {
               ctx.save();
               ctx.beginPath(); ctx.rect(0, 0, halfW, H); ctx.clip();
               const lp = (t - 0.45) / 0.55;
-              const lsw = halfW * lp * 0.35;
+              const lsw = halfW * lp * 0.4;
               const lsg = ctx.createLinearGradient(halfW, 0, halfW - lsw, 0);
-              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.18 * lp) + ')');
+              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.22 * lp) + ')');
               lsg.addColorStop(1, 'transparent');
               ctx.fillStyle = lsg; ctx.fillRect(halfW - lsw, 0, lsw, H);
               ctx.restore();
             }
 
-            // 2. Solid opaque curled page (no strips = no gaps)
+            // === 2. The curled page (back side of turning page) ===
             ctx.save();
-            ctx.beginPath(); ctx.rect(regionLeft, 0, regionW, H); ctx.clip();
+            ctx.beginPath(); traceFold(0);
+            ctx.lineTo(regionLeft, H); ctx.lineTo(regionLeft, 0); ctx.closePath(); ctx.clip();
 
             // Opaque paper base
             ctx.fillStyle = '#faf7f0';
-            ctx.fillRect(regionLeft, 0, regionW, H);
+            ctx.fillRect(regionLeft, 0, curlW + bow + 5, H);
 
-            // Draw back page image (mirrored horizontally across foldX)
+            // Draw back page image (mirrored across foldX)
             if (backImg && backImg.complete && backImg.naturalWidth > 0) {
               const imgAr = backImg.naturalWidth / backImg.naturalHeight;
               const boxAr = halfW / H;
@@ -918,64 +937,100 @@
               ctx.restore();
             }
 
-            // 3. Cylindrical bend gradient (3D illusion without strip gaps)
-            const bendG = ctx.createLinearGradient(regionLeft, 0, foldX, 0);
-            bendG.addColorStop(0, 'rgba(0,0,0,' + (0.04 * curlAmount) + ')');
-            bendG.addColorStop(0.15, 'transparent');
-            bendG.addColorStop(0.35, 'rgba(255,255,255,' + (0.12 * curlAmount) + ')');
-            bendG.addColorStop(0.5, 'rgba(0,0,0,' + (0.02 * curlAmount) + ')');
-            bendG.addColorStop(0.7, 'rgba(255,255,255,' + (0.15 * curlAmount) + ')');
-            bendG.addColorStop(0.88, 'rgba(0,0,0,' + (0.06 * curlAmount) + ')');
-            bendG.addColorStop(0.96, 'rgba(255,255,255,' + (0.08 * curlAmount) + ')');
-            bendG.addColorStop(1, 'rgba(0,0,0,' + (0.15 * curlAmount) + ')');
-            ctx.fillStyle = bendG;
-            ctx.fillRect(regionLeft, 0, regionW, H);
-
+            // === 3. Cylinder shading (multi-band highlight/shadow for 3D depth) ===
+            const cylG = ctx.createLinearGradient(regionLeft, 0, foldX + bow, 0);
+            cylG.addColorStop(0, 'rgba(0,0,0,' + (0.08 * curlAmount) + ')');
+            cylG.addColorStop(0.02, 'rgba(255,255,255,' + (0.14 * curlAmount) + ')');
+            cylG.addColorStop(0.07, 'transparent');
+            cylG.addColorStop(0.13, 'rgba(255,255,255,' + (0.25 * curlAmount) + ')');
+            cylG.addColorStop(0.20, 'rgba(0,0,0,' + (0.03 * curlAmount) + ')');
+            cylG.addColorStop(0.38, 'transparent');
+            cylG.addColorStop(0.55, 'rgba(255,255,255,' + (0.07 * curlAmount) + ')');
+            cylG.addColorStop(0.72, 'rgba(0,0,0,' + (0.06 * curlAmount) + ')');
+            cylG.addColorStop(0.83, 'rgba(255,255,255,' + (0.16 * curlAmount) + ')');
+            cylG.addColorStop(0.93, 'rgba(0,0,0,' + (0.14 * curlAmount) + ')');
+            cylG.addColorStop(0.97, 'rgba(0,0,0,' + (0.25 * curlAmount) + ')');
+            cylG.addColorStop(1, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
+            ctx.fillStyle = cylG;
+            ctx.fillRect(regionLeft, 0, curlW + bow + 5, H);
             ctx.restore();
 
-            // 4. Fold edge (solid paper thickness)
+            // === 4. Specular highlight along the fold apex ===
             ctx.save();
-            const ew = 5 + curlAmount * 10;
-            // Dark shadow line at fold crease
-            ctx.fillStyle = 'rgba(60,40,20,0.25)';
-            ctx.fillRect(foldX - 1, 0, 2, H);
-            // Paper stack layers
+            ctx.globalAlpha = curlAmount * 0.4;
+            ctx.beginPath();
+            traceFold(-3); ctx.lineTo(foldX + 3, H);
+            ctx.bezierCurveTo(foldX + bow + 3, H * 0.75, foldX + bow * 0.6 + 3, H * 0.25, foldX + 3, 0);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.restore();
+
+            // === 5. Curved paper edge (shows thickness) ===
+            ctx.save();
+            const ew = 3 + curlAmount * 7;
+            ctx.beginPath();
+            traceFold(0);
+            ctx.lineTo(foldX + ew, H);
+            ctx.bezierCurveTo(foldX + bow + ew, H * 0.75, foldX + bow * 0.6 + ew, H * 0.25, foldX + ew, 0);
+            ctx.closePath();
             const eg = ctx.createLinearGradient(foldX, 0, foldX + ew, 0);
-            eg.addColorStop(0, '#d4c8b0');
-            eg.addColorStop(0.08, '#e8dfd0');
-            eg.addColorStop(0.2, '#faf5ea');
-            eg.addColorStop(0.35, '#ece5d5');
-            eg.addColorStop(0.5, '#faf7f0');
-            eg.addColorStop(0.65, '#eee7d8');
-            eg.addColorStop(0.8, '#f8f3e8');
-            eg.addColorStop(0.92, '#e5ddd0');
-            eg.addColorStop(1, 'rgba(180,160,130,0.4)');
-            ctx.fillStyle = eg;
-            ctx.fillRect(foldX, 0, ew, H);
-            // Subtle horizontal page lines within edge
-            ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+            eg.addColorStop(0, '#c4b8a0');
+            eg.addColorStop(0.12, '#e8dfd0');
+            eg.addColorStop(0.3, '#faf5ea');
+            eg.addColorStop(0.5, '#ece5d5');
+            eg.addColorStop(0.7, '#f8f3e8');
+            eg.addColorStop(0.88, '#e5ddd0');
+            eg.addColorStop(1, '#d4c8b0');
+            ctx.fillStyle = eg; ctx.fill();
+            // Paper layer lines
+            ctx.strokeStyle = 'rgba(0,0,0,0.05)';
             ctx.lineWidth = 0.5;
-            for (let ly = 8; ly < H; ly += 4) {
-              ctx.beginPath(); ctx.moveTo(foldX + 1, ly); ctx.lineTo(foldX + ew - 1, ly); ctx.stroke();
+            for (let ly = 4; ly < H; ly += 3) {
+              const ry = ly / H;
+              const bAtY = bow * (ry < 0.5 ? (0.6 * 4 * ry * (1 - ry) + 0.4 * 2 * ry) : (4 * ry * (1 - ry)));
+              ctx.beginPath(); ctx.moveTo(foldX + bAtY + 1, ly); ctx.lineTo(foldX + bAtY + ew - 1, ly); ctx.stroke();
             }
             ctx.restore();
 
+            // === 6. Dark fold crease ===
+            ctx.save();
+            ctx.strokeStyle = 'rgba(50,35,15,' + (0.35 * curlAmount) + ')';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); traceFold(0); ctx.stroke();
+            ctx.restore();
+
           } else {
-            // prev: Fold line sweeps from left edge toward spine
+            // --- PREV: fold sweeps from left edge toward spine ---
             const foldX = halfW * t;
             const backImg = getPageImg(li - 1);
-            const regionRight = Math.min(W, 2 * foldX);
-            const regionW = regionRight - foldX;
+            const curlW = foldX;
+            const regionRight = foldX + curlW;
+            const bow = curlAmount * 24;
 
-            // 1. Shadow on underlying left page
+            const traceFold = (ox) => {
+              ctx.moveTo(foldX + ox, 0);
+              ctx.bezierCurveTo(
+                foldX - bow * 0.6 + ox, H * 0.25,
+                foldX - bow + ox, H * 0.75,
+                foldX + ox, H
+              );
+            };
+
+            // === 1. Shadow on underlying left page ===
             ctx.save();
-            ctx.beginPath(); ctx.rect(0, 0, foldX, H); ctx.clip();
-            const sw = 15 + curlAmount * 40;
+            ctx.beginPath(); traceFold(0);
+            ctx.lineTo(0, H); ctx.lineTo(0, 0); ctx.closePath(); ctx.clip();
+            const sw = 30 + curlAmount * 65;
             const sg = ctx.createLinearGradient(foldX, 0, foldX - sw, 0);
-            sg.addColorStop(0, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
-            sg.addColorStop(0.4, 'rgba(0,0,0,' + (0.1 * curlAmount) + ')');
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.52 * curlAmount) + ')');
+            sg.addColorStop(0.06, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
+            sg.addColorStop(0.22, 'rgba(0,0,0,' + (0.14 * curlAmount) + ')');
+            sg.addColorStop(0.5, 'rgba(0,0,0,' + (0.04 * curlAmount) + ')');
             sg.addColorStop(1, 'transparent');
-            ctx.fillStyle = sg; ctx.fillRect(foldX - sw, 0, sw, H);
+            ctx.fillStyle = sg;
+            ctx.fillRect(foldX - sw - bow, 0, sw + bow * 2, H);
             ctx.restore();
 
             // Shadow on right page when past spine
@@ -983,23 +1038,22 @@
               ctx.save();
               ctx.beginPath(); ctx.rect(halfW, 0, halfW, H); ctx.clip();
               const rp = (t - 0.45) / 0.55;
-              const rsw = halfW * rp * 0.35;
+              const rsw = halfW * rp * 0.4;
               const rsg = ctx.createLinearGradient(halfW, 0, halfW + rsw, 0);
-              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.18 * rp) + ')');
+              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.22 * rp) + ')');
               rsg.addColorStop(1, 'transparent');
               ctx.fillStyle = rsg; ctx.fillRect(halfW, 0, rsw, H);
               ctx.restore();
             }
 
-            // 2. Solid opaque curled page
+            // === 2. Curled page ===
             ctx.save();
-            ctx.beginPath(); ctx.rect(foldX, 0, regionW, H); ctx.clip();
+            ctx.beginPath(); traceFold(0);
+            ctx.lineTo(regionRight, H); ctx.lineTo(regionRight, 0); ctx.closePath(); ctx.clip();
 
-            // Opaque paper base
             ctx.fillStyle = '#faf7f0';
-            ctx.fillRect(foldX, 0, regionW, H);
+            ctx.fillRect(foldX - bow - 5, 0, curlW + bow + 10, H);
 
-            // Draw back page image (mirrored)
             if (backImg && backImg.complete && backImg.naturalWidth > 0) {
               const imgAr = backImg.naturalWidth / backImg.naturalHeight;
               const boxAr = halfW / H;
@@ -1015,46 +1069,67 @@
               ctx.restore();
             }
 
-            // 3. Cylindrical bend gradient
-            const bendG = ctx.createLinearGradient(foldX, 0, regionRight, 0);
-            bendG.addColorStop(0, 'rgba(0,0,0,' + (0.15 * curlAmount) + ')');
-            bendG.addColorStop(0.04, 'rgba(255,255,255,' + (0.08 * curlAmount) + ')');
-            bendG.addColorStop(0.12, 'rgba(0,0,0,' + (0.06 * curlAmount) + ')');
-            bendG.addColorStop(0.3, 'rgba(255,255,255,' + (0.15 * curlAmount) + ')');
-            bendG.addColorStop(0.5, 'rgba(0,0,0,' + (0.02 * curlAmount) + ')');
-            bendG.addColorStop(0.65, 'rgba(255,255,255,' + (0.12 * curlAmount) + ')');
-            bendG.addColorStop(0.85, 'transparent');
-            bendG.addColorStop(1, 'rgba(0,0,0,' + (0.04 * curlAmount) + ')');
-            ctx.fillStyle = bendG;
-            ctx.fillRect(foldX, 0, regionW, H);
-
+            // Cylinder shading
+            const cylG = ctx.createLinearGradient(regionRight, 0, foldX - bow, 0);
+            cylG.addColorStop(0, 'rgba(0,0,0,' + (0.08 * curlAmount) + ')');
+            cylG.addColorStop(0.02, 'rgba(255,255,255,' + (0.14 * curlAmount) + ')');
+            cylG.addColorStop(0.07, 'transparent');
+            cylG.addColorStop(0.13, 'rgba(255,255,255,' + (0.25 * curlAmount) + ')');
+            cylG.addColorStop(0.20, 'rgba(0,0,0,' + (0.03 * curlAmount) + ')');
+            cylG.addColorStop(0.38, 'transparent');
+            cylG.addColorStop(0.55, 'rgba(255,255,255,' + (0.07 * curlAmount) + ')');
+            cylG.addColorStop(0.72, 'rgba(0,0,0,' + (0.06 * curlAmount) + ')');
+            cylG.addColorStop(0.83, 'rgba(255,255,255,' + (0.16 * curlAmount) + ')');
+            cylG.addColorStop(0.93, 'rgba(0,0,0,' + (0.14 * curlAmount) + ')');
+            cylG.addColorStop(0.97, 'rgba(0,0,0,' + (0.25 * curlAmount) + ')');
+            cylG.addColorStop(1, 'rgba(0,0,0,' + (0.35 * curlAmount) + ')');
+            ctx.fillStyle = cylG;
+            ctx.fillRect(foldX - bow - 5, 0, curlW + bow + 10, H);
             ctx.restore();
 
-            // 4. Fold edge (solid paper thickness)
+            // === Specular highlight ===
             ctx.save();
-            const ew = 5 + curlAmount * 10;
-            // Dark shadow line at fold crease
-            ctx.fillStyle = 'rgba(60,40,20,0.25)';
-            ctx.fillRect(foldX - 1, 0, 2, H);
-            // Paper stack layers
-            const eg = ctx.createLinearGradient(foldX - ew, 0, foldX, 0);
-            eg.addColorStop(0, 'rgba(180,160,130,0.4)');
-            eg.addColorStop(0.08, '#e5ddd0');
-            eg.addColorStop(0.2, '#f8f3e8');
-            eg.addColorStop(0.35, '#eee7d8');
-            eg.addColorStop(0.5, '#faf7f0');
-            eg.addColorStop(0.65, '#ece5d5');
-            eg.addColorStop(0.8, '#faf5ea');
-            eg.addColorStop(0.92, '#e8dfd0');
+            ctx.globalAlpha = curlAmount * 0.4;
+            ctx.beginPath();
+            traceFold(-3); ctx.lineTo(foldX + 3, H);
+            ctx.bezierCurveTo(foldX - bow + 3, H * 0.75, foldX - bow * 0.6 + 3, H * 0.25, foldX + 3, 0);
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.restore();
+
+            // === Curved paper edge ===
+            ctx.save();
+            const ew = 3 + curlAmount * 7;
+            ctx.beginPath();
+            traceFold(0);
+            ctx.lineTo(foldX - ew, H);
+            ctx.bezierCurveTo(foldX - bow - ew, H * 0.75, foldX - bow * 0.6 - ew, H * 0.25, foldX - ew, 0);
+            ctx.closePath();
+            const eg = ctx.createLinearGradient(foldX, 0, foldX - ew, 0);
+            eg.addColorStop(0, '#c4b8a0');
+            eg.addColorStop(0.12, '#e8dfd0');
+            eg.addColorStop(0.3, '#faf5ea');
+            eg.addColorStop(0.5, '#ece5d5');
+            eg.addColorStop(0.7, '#f8f3e8');
+            eg.addColorStop(0.88, '#e5ddd0');
             eg.addColorStop(1, '#d4c8b0');
-            ctx.fillStyle = eg;
-            ctx.fillRect(foldX - ew, 0, ew, H);
-            // Subtle horizontal page lines within edge
-            ctx.strokeStyle = 'rgba(0,0,0,0.04)';
+            ctx.fillStyle = eg; ctx.fill();
+            ctx.strokeStyle = 'rgba(0,0,0,0.05)';
             ctx.lineWidth = 0.5;
-            for (let ly = 8; ly < H; ly += 4) {
-              ctx.beginPath(); ctx.moveTo(foldX - ew + 1, ly); ctx.lineTo(foldX - 1, ly); ctx.stroke();
+            for (let ly = 4; ly < H; ly += 3) {
+              const ry = ly / H;
+              const bAtY = bow * (ry < 0.5 ? (0.6 * 4 * ry * (1 - ry) + 0.4 * 2 * ry) : (4 * ry * (1 - ry)));
+              ctx.beginPath(); ctx.moveTo(foldX - bAtY - 1, ly); ctx.lineTo(foldX - bAtY - ew + 1, ly); ctx.stroke();
             }
+            ctx.restore();
+
+            // === Dark fold crease ===
+            ctx.save();
+            ctx.strokeStyle = 'rgba(50,35,15,' + (0.35 * curlAmount) + ')';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); traceFold(0); ctx.stroke();
             ctx.restore();
           }
         };
