@@ -858,294 +858,146 @@
           ctx.restore();
         };
 
-        // ---- Google Books-style page flip (corner-peel with diagonal fold) ----
+        // ---- Clean page flip with tilted fold line ----
         const drawPageCurl = (progress, direction) => {
           if (progress <= 0.001 || progress >= 0.999) return;
           const t = progress;
-          const ease = Math.sin(t * Math.PI); // peaks mid-flip
+          const ease = Math.sin(t * Math.PI);
 
           if (direction === 'next') {
-            // Corner peels from bottom-right up and across (big arc → diagonal fold)
-            const origX = W, origY = H;
-            // Corner arcs upward dramatically then settles at top-left area
-            const cx = W - W * t;
-            const cy = H - ease * H * 0.55;
-
-            // Fold line = perpendicular bisector of (origX,origY)→(cx,cy)
-            const midX = (origX + cx) / 2, midY = (origY + cy) / 2;
-            const dx = cx - origX, dy = cy - origY;
-            const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            // Normal direction of fold line (perpendicular to drag direction)
-            const nx = -dy / len, ny = dx / len;
-
-            // Find fold line intersections with page rectangle edges
-            // Parametric: P = mid + s * (nx, ny)
-            const intersections = [];
-            const edges = [
-              { axis: 'y', val: 0, range: [0, W] },   // top
-              { axis: 'y', val: H, range: [0, W] },   // bottom
-              { axis: 'x', val: 0, range: [0, H] },   // left
-              { axis: 'x', val: W, range: [0, H] }    // right
-            ];
-            for (const e of edges) {
-              let s, px, py;
-              if (e.axis === 'y') {
-                if (Math.abs(ny) < 0.0001) continue;
-                s = (e.val - midY) / ny;
-                px = midX + s * nx; py = e.val;
-                if (px >= e.range[0] - 1 && px <= e.range[1] + 1) intersections.push({ x: px, y: py });
-              } else {
-                if (Math.abs(nx) < 0.0001) continue;
-                s = (e.val - midX) / nx;
-                px = e.val; py = midY + s * ny;
-                if (py >= e.range[0] - 1 && py <= e.range[1] + 1) intersections.push({ x: px, y: py });
-              }
-            }
-            if (intersections.length < 2) return;
-            // Sort by y to get top→bottom fold line points
-            intersections.sort((a, b) => a.y - b.y);
-            const fTop = intersections[0], fBot = intersections[intersections.length - 1];
-
-            // Which side of fold line is the "curled" side? (side containing original corner)
-            const sideSign = (origX - midX) * nx + (origY - midY) * ny > 0 ? 1 : -1;
-            const isOnCurlSide = (px, py) => ((px - midX) * nx + (py - midY) * ny) * sideSign > 0;
-
-            // Build curled region clip path (polygon of page corners on curl side + fold endpoints)
-            const corners = [{x:0,y:0},{x:W,y:0},{x:W,y:H},{x:0,y:H}];
-            const curlCorners = corners.filter(c => isOnCurlSide(c.x, c.y));
-
-            // Clip path: fold top → curl-side corners (sorted by angle) → fold bottom → close
-            const clipCurl = () => {
-              ctx.beginPath();
-              ctx.moveTo(fTop.x, fTop.y);
-              // Sort curl corners by angle from fold midpoint
-              const fmx = (fTop.x + fBot.x) / 2, fmy = (fTop.y + fBot.y) / 2;
-              curlCorners.sort((a, b) => {
-                const aa = Math.atan2(a.y - fmy, a.x - fmx);
-                const ab = Math.atan2(b.y - fmy, b.x - fmx);
-                // Walk clockwise from fTop
-                return aa - ab;
-              });
-              // Walk from fTop along the page edge through curl corners to fBot
-              // Simple: fTop → right/top corners → fBot
-              const allPts = [fTop, ...curlCorners.sort((a,b) => {
-                // Sort clockwise from fTop
-                const angA = Math.atan2(a.y - fTop.y, a.x - fTop.x);
-                const angB = Math.atan2(b.y - fTop.y, b.x - fTop.x);
-                return angA - angB;
-              }), fBot];
-              for (let i = 1; i < allPts.length; i++) ctx.lineTo(allPts[i].x, allPts[i].y);
-              ctx.closePath();
-            };
-
-            // Reflect a point across the fold line
-            const reflect = (px, py) => {
-              const dot = (px - midX) * nx + (py - midY) * ny;
-              return { x: px - 2 * dot * nx, y: py - 2 * dot * ny };
-            };
-
+            // Fold line sweeps right→left with a natural tilt
+            const foldCenter = halfW + halfW * (1 - t);
+            const tilt = ease * 28;
+            const fTopX = Math.min(W, foldCenter + tilt);
+            const fBotX = Math.max(0, foldCenter - tilt);
             const backImg = getPageImg(ri + 1);
 
-            // === 1. Shadow on the underlying page ===
+            // Width of the curled region (from fold to original right edge, reflected)
+            const curlW = W - foldCenter;
+
+            // === 1. Shadow on the page underneath ===
             ctx.save();
-            // Clip to the curl side (where shadow falls on what's underneath)
-            clipCurl(); ctx.clip();
-            // Gradient shadow perpendicular to fold line, extending away from fold
-            const shW = 20 + ease * 50;
-            const sg = ctx.createLinearGradient(
-              midX - nx * sideSign * 2, midY - ny * sideSign * 2,
-              midX + nx * sideSign * shW, midY + ny * sideSign * shW
-            );
-            sg.addColorStop(0, 'rgba(0,0,0,' + (0.4 * ease) + ')');
-            sg.addColorStop(0.15, 'rgba(0,0,0,' + (0.2 * ease) + ')');
-            sg.addColorStop(0.5, 'rgba(0,0,0,' + (0.05 * ease) + ')');
+            ctx.beginPath();
+            ctx.moveTo(fTopX, 0); ctx.lineTo(fBotX, H);
+            ctx.lineTo(W, H); ctx.lineTo(W, 0); ctx.closePath();
+            ctx.clip();
+            const sw = 18 + ease * 45;
+            const sg = ctx.createLinearGradient(foldCenter, H / 2, foldCenter + sw, H / 2);
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.42 * ease) + ')');
+            sg.addColorStop(0.12, 'rgba(0,0,0,' + (0.18 * ease) + ')');
+            sg.addColorStop(0.4, 'rgba(0,0,0,' + (0.05 * ease) + ')');
             sg.addColorStop(1, 'transparent');
-            ctx.fillStyle = sg;
-            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = sg; ctx.fillRect(foldCenter - tilt - 5, 0, sw + tilt * 2 + 10, H);
             ctx.restore();
 
-            // Also shadow on left page when fold crosses spine
+            // Shadow on left page when fold crosses spine
             if (t > 0.5) {
               ctx.save();
               ctx.beginPath(); ctx.rect(0, 0, halfW, H); ctx.clip();
               const lp = (t - 0.5) / 0.5;
-              const sh = ctx.createLinearGradient(halfW, 0, halfW - halfW * lp * 0.3, 0);
-              sh.addColorStop(0, 'rgba(0,0,0,' + (0.15 * lp) + ')');
-              sh.addColorStop(1, 'transparent');
-              ctx.fillStyle = sh; ctx.fillRect(0, 0, halfW, H);
+              const lsg = ctx.createLinearGradient(halfW, 0, halfW - halfW * lp * 0.3, 0);
+              lsg.addColorStop(0, 'rgba(0,0,0,' + (0.15 * lp) + ')');
+              lsg.addColorStop(1, 'transparent');
+              ctx.fillStyle = lsg; ctx.fillRect(0, 0, halfW, H);
               ctx.restore();
             }
 
-            // === 2. The folded/curled page (back face) ===
-            // The curled page is the REFLECTION of the curl region across the fold line
+            // === 2. Curled page (back side) ===
             ctx.save();
-            // Clip to the NON-curl side (the reflected page appears here)
             ctx.beginPath();
-            ctx.moveTo(fTop.x, fTop.y);
-            const nonCurlCorners = corners.filter(c => !isOnCurlSide(c.x, c.y));
-            const ncSorted = [...nonCurlCorners].sort((a,b) => {
-              const angA = Math.atan2(a.y - fTop.y, a.x - fTop.x);
-              const angB = Math.atan2(b.y - fTop.y, b.x - fTop.x);
-              return angA - angB;
-            });
-            for (const c of ncSorted) ctx.lineTo(c.x, c.y);
-            ctx.lineTo(fBot.x, fBot.y);
+            ctx.moveTo(fTopX, 0); ctx.lineTo(fBotX, H);
+            // Left boundary of curled region (reflected fold)
+            const rTopX = fTopX - 2 * curlW;
+            const rBotX = fBotX - 2 * curlW;
+            ctx.lineTo(Math.max(0, rBotX), H);
+            ctx.lineTo(Math.max(0, rTopX), 0);
             ctx.closePath();
-            // But we only want the part that was originally the curl side (reflected)
-            // So re-clip to bounded area
             ctx.clip();
 
-            // Fill opaque paper
+            // Opaque paper
             ctx.fillStyle = '#faf7f0';
             ctx.fillRect(0, 0, W, H);
 
-            // Draw back page image reflected across the fold line
+            // Draw back page image (mirrored across fold)
             if (backImg && backImg.complete && backImg.naturalWidth > 0) {
               const imgAr = backImg.naturalWidth / backImg.naturalHeight;
               const boxAr = halfW / H;
               let dw, dh;
               if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
               else { dh = H * 0.92; dw = dh * imgAr; }
-              const imgDx = halfW + (halfW - dw) / 2;
               const imgDy = (H - dh) / 2;
-              // Apply reflection transform
-              const fAngle = Math.atan2(fBot.y - fTop.y, fBot.x - fTop.x);
               ctx.save();
-              ctx.translate(midX, midY);
-              ctx.rotate(fAngle);
-              ctx.scale(1, -1);
-              ctx.rotate(-fAngle);
-              ctx.translate(-midX, -midY);
+              ctx.translate(foldCenter, 0);
+              ctx.scale(-1, 1);
+              const imgDx = (halfW - dw) / 2;
               ctx.drawImage(backImg, imgDx, imgDy, dw, dh);
               ctx.restore();
             }
 
-            // Subtle gradient on curled page (darker near fold, lighter away)
-            const cg = ctx.createLinearGradient(
-              midX + nx * sideSign * 5, midY + ny * sideSign * 5,
-              midX - nx * sideSign * halfW * 0.6, midY - ny * sideSign * halfW * 0.6
-            );
-            cg.addColorStop(0, 'rgba(0,0,0,' + (0.12 * ease) + ')');
-            cg.addColorStop(0.08, 'rgba(0,0,0,' + (0.03 * ease) + ')');
-            cg.addColorStop(0.15, 'rgba(255,255,255,' + (0.08 * ease) + ')');
-            cg.addColorStop(0.4, 'transparent');
-            cg.addColorStop(1, 'rgba(0,0,0,' + (0.02 * ease) + ')');
-            ctx.fillStyle = cg;
-            ctx.fillRect(0, 0, W, H);
+            // Subtle shading on curled page
+            const cg = ctx.createLinearGradient(foldCenter, H / 2, foldCenter - curlW, H / 2);
+            cg.addColorStop(0, 'rgba(0,0,0,' + (0.1 * ease) + ')');
+            cg.addColorStop(0.06, 'rgba(255,255,255,' + (0.08 * ease) + ')');
+            cg.addColorStop(0.15, 'transparent');
+            cg.addColorStop(0.85, 'transparent');
+            cg.addColorStop(1, 'rgba(0,0,0,' + (0.04 * ease) + ')');
+            ctx.fillStyle = cg; ctx.fillRect(0, 0, W, H);
             ctx.restore();
 
-            // === 3. Thin fold line ===
+            // === 3. Fold line ===
             ctx.save();
-            ctx.strokeStyle = 'rgba(80,60,30,' + (0.3 * ease) + ')';
+            ctx.strokeStyle = 'rgba(60,45,20,' + (0.3 * ease) + ')';
             ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(fTop.x, fTop.y);
-            ctx.lineTo(fBot.x, fBot.y);
-            ctx.stroke();
-            // Subtle highlight next to fold line
-            ctx.strokeStyle = 'rgba(255,255,255,' + (0.3 * ease) + ')';
-            ctx.lineWidth = 0.8;
-            ctx.beginPath();
-            ctx.moveTo(fTop.x - nx * sideSign * 2, fTop.y - ny * sideSign * 2);
-            ctx.lineTo(fBot.x - nx * sideSign * 2, fBot.y - ny * sideSign * 2);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(fTopX, 0); ctx.lineTo(fBotX, H); ctx.stroke();
+            // Highlight beside fold
+            ctx.strokeStyle = 'rgba(255,255,255,' + (0.25 * ease) + ')';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(fTopX - 2, 0); ctx.lineTo(fBotX - 2, H); ctx.stroke();
             ctx.restore();
 
           } else {
-            // --- PREV: corner peels from bottom-left up and across ---
-            const origX = 0, origY = H;
-            const cx = W * t;
-            const cy = H - ease * H * 0.55;
-
-            const midX = (origX + cx) / 2, midY = (origY + cy) / 2;
-            const dx = cx - origX, dy = cy - origY;
-            const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const nx = -dy / len, ny = dx / len;
-
-            const intersections = [];
-            const edges = [
-              { axis: 'y', val: 0, range: [0, W] },
-              { axis: 'y', val: H, range: [0, W] },
-              { axis: 'x', val: 0, range: [0, H] },
-              { axis: 'x', val: W, range: [0, H] }
-            ];
-            for (const e of edges) {
-              let s, px, py;
-              if (e.axis === 'y') {
-                if (Math.abs(ny) < 0.0001) continue;
-                s = (e.val - midY) / ny;
-                px = midX + s * nx; py = e.val;
-                if (px >= e.range[0] - 1 && px <= e.range[1] + 1) intersections.push({ x: px, y: py });
-              } else {
-                if (Math.abs(nx) < 0.0001) continue;
-                s = (e.val - midX) / nx;
-                px = e.val; py = midY + s * ny;
-                if (py >= e.range[0] - 1 && py <= e.range[1] + 1) intersections.push({ x: px, y: py });
-              }
-            }
-            if (intersections.length < 2) return;
-            intersections.sort((a, b) => a.y - b.y);
-            const fTop = intersections[0], fBot = intersections[intersections.length - 1];
-
-            const sideSign = (origX - midX) * nx + (origY - midY) * ny > 0 ? 1 : -1;
-            const isOnCurlSide = (px, py) => ((px - midX) * nx + (py - midY) * ny) * sideSign > 0;
-
-            const corners = [{x:0,y:0},{x:W,y:0},{x:W,y:H},{x:0,y:H}];
-            const curlCorners = corners.filter(c => isOnCurlSide(c.x, c.y));
-
-            const clipCurl = () => {
-              ctx.beginPath();
-              ctx.moveTo(fTop.x, fTop.y);
-              const allPts = [fTop, ...curlCorners.sort((a,b) => {
-                const angA = Math.atan2(a.y - fTop.y, a.x - fTop.x);
-                const angB = Math.atan2(b.y - fTop.y, b.x - fTop.x);
-                return angA - angB;
-              }), fBot];
-              for (let i = 1; i < allPts.length; i++) ctx.lineTo(allPts[i].x, allPts[i].y);
-              ctx.closePath();
-            };
-
+            // --- PREV: fold sweeps left→right with tilt ---
+            const foldCenter = halfW * t;
+            const tilt = ease * 28;
+            const fTopX = Math.max(0, foldCenter - tilt);
+            const fBotX = Math.min(W, foldCenter + tilt);
             const backImg = getPageImg(li - 1);
+            const curlW = foldCenter;
 
             // === 1. Shadow ===
             ctx.save();
-            clipCurl(); ctx.clip();
-            const shW = 20 + ease * 50;
-            const sg = ctx.createLinearGradient(
-              midX - nx * sideSign * 2, midY - ny * sideSign * 2,
-              midX + nx * sideSign * shW, midY + ny * sideSign * shW
-            );
-            sg.addColorStop(0, 'rgba(0,0,0,' + (0.4 * ease) + ')');
-            sg.addColorStop(0.15, 'rgba(0,0,0,' + (0.2 * ease) + ')');
-            sg.addColorStop(0.5, 'rgba(0,0,0,' + (0.05 * ease) + ')');
+            ctx.beginPath();
+            ctx.moveTo(fTopX, 0); ctx.lineTo(fBotX, H);
+            ctx.lineTo(0, H); ctx.lineTo(0, 0); ctx.closePath();
+            ctx.clip();
+            const sw = 18 + ease * 45;
+            const sg = ctx.createLinearGradient(foldCenter, H / 2, foldCenter - sw, H / 2);
+            sg.addColorStop(0, 'rgba(0,0,0,' + (0.42 * ease) + ')');
+            sg.addColorStop(0.12, 'rgba(0,0,0,' + (0.18 * ease) + ')');
+            sg.addColorStop(0.4, 'rgba(0,0,0,' + (0.05 * ease) + ')');
             sg.addColorStop(1, 'transparent');
-            ctx.fillStyle = sg;
-            ctx.fillRect(0, 0, W, H);
+            ctx.fillStyle = sg; ctx.fillRect(foldCenter - sw - tilt - 5, 0, sw + tilt * 2 + 10, H);
             ctx.restore();
 
             if (t > 0.5) {
               ctx.save();
               ctx.beginPath(); ctx.rect(halfW, 0, halfW, H); ctx.clip();
               const rp = (t - 0.5) / 0.5;
-              const sh = ctx.createLinearGradient(halfW, 0, halfW + halfW * rp * 0.3, 0);
-              sh.addColorStop(0, 'rgba(0,0,0,' + (0.15 * rp) + ')');
-              sh.addColorStop(1, 'transparent');
-              ctx.fillStyle = sh; ctx.fillRect(halfW, 0, halfW, H);
+              const rsg = ctx.createLinearGradient(halfW, 0, halfW + halfW * rp * 0.3, 0);
+              rsg.addColorStop(0, 'rgba(0,0,0,' + (0.15 * rp) + ')');
+              rsg.addColorStop(1, 'transparent');
+              ctx.fillStyle = rsg; ctx.fillRect(halfW, 0, halfW, H);
               ctx.restore();
             }
 
             // === 2. Curled page ===
             ctx.save();
             ctx.beginPath();
-            ctx.moveTo(fTop.x, fTop.y);
-            const nonCurlCorners = corners.filter(c => !isOnCurlSide(c.x, c.y));
-            const ncSorted = [...nonCurlCorners].sort((a,b) => {
-              const angA = Math.atan2(a.y - fTop.y, a.x - fTop.x);
-              const angB = Math.atan2(b.y - fTop.y, b.x - fTop.x);
-              return angA - angB;
-            });
-            for (const c of ncSorted) ctx.lineTo(c.x, c.y);
-            ctx.lineTo(fBot.x, fBot.y);
+            ctx.moveTo(fTopX, 0); ctx.lineTo(fBotX, H);
+            const rTopX = fTopX + 2 * curlW;
+            const rBotX = fBotX + 2 * curlW;
+            ctx.lineTo(Math.min(W, rBotX), H);
+            ctx.lineTo(Math.min(W, rTopX), 0);
             ctx.closePath();
             ctx.clip();
 
@@ -1158,46 +1010,32 @@
               let dw, dh;
               if (imgAr > boxAr) { dw = halfW * 0.92; dh = dw / imgAr; }
               else { dh = H * 0.92; dw = dh * imgAr; }
-              const imgDx = (halfW - dw) / 2;
               const imgDy = (H - dh) / 2;
-              const fAngle = Math.atan2(fBot.y - fTop.y, fBot.x - fTop.x);
               ctx.save();
-              ctx.translate(midX, midY);
-              ctx.rotate(fAngle);
-              ctx.scale(1, -1);
-              ctx.rotate(-fAngle);
-              ctx.translate(-midX, -midY);
+              ctx.translate(foldCenter, 0);
+              ctx.scale(-1, 1);
+              const imgDx = -(halfW - (halfW - dw) / 2);
               ctx.drawImage(backImg, imgDx, imgDy, dw, dh);
               ctx.restore();
             }
 
-            const cg = ctx.createLinearGradient(
-              midX + nx * sideSign * 5, midY + ny * sideSign * 5,
-              midX - nx * sideSign * halfW * 0.6, midY - ny * sideSign * halfW * 0.6
-            );
-            cg.addColorStop(0, 'rgba(0,0,0,' + (0.12 * ease) + ')');
-            cg.addColorStop(0.08, 'rgba(0,0,0,' + (0.03 * ease) + ')');
-            cg.addColorStop(0.15, 'rgba(255,255,255,' + (0.08 * ease) + ')');
-            cg.addColorStop(0.4, 'transparent');
-            cg.addColorStop(1, 'rgba(0,0,0,' + (0.02 * ease) + ')');
-            ctx.fillStyle = cg;
-            ctx.fillRect(0, 0, W, H);
+            const cg = ctx.createLinearGradient(foldCenter, H / 2, foldCenter + curlW, H / 2);
+            cg.addColorStop(0, 'rgba(0,0,0,' + (0.1 * ease) + ')');
+            cg.addColorStop(0.06, 'rgba(255,255,255,' + (0.08 * ease) + ')');
+            cg.addColorStop(0.15, 'transparent');
+            cg.addColorStop(0.85, 'transparent');
+            cg.addColorStop(1, 'rgba(0,0,0,' + (0.04 * ease) + ')');
+            ctx.fillStyle = cg; ctx.fillRect(0, 0, W, H);
             ctx.restore();
 
             // === 3. Fold line ===
             ctx.save();
-            ctx.strokeStyle = 'rgba(80,60,30,' + (0.3 * ease) + ')';
+            ctx.strokeStyle = 'rgba(60,45,20,' + (0.3 * ease) + ')';
             ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(fTop.x, fTop.y);
-            ctx.lineTo(fBot.x, fBot.y);
-            ctx.stroke();
-            ctx.strokeStyle = 'rgba(255,255,255,' + (0.3 * ease) + ')';
-            ctx.lineWidth = 0.8;
-            ctx.beginPath();
-            ctx.moveTo(fTop.x - nx * sideSign * 2, fTop.y - ny * sideSign * 2);
-            ctx.lineTo(fBot.x - nx * sideSign * 2, fBot.y - ny * sideSign * 2);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(fTopX, 0); ctx.lineTo(fBotX, H); ctx.stroke();
+            ctx.strokeStyle = 'rgba(255,255,255,' + (0.25 * ease) + ')';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(fTopX + 2, 0); ctx.lineTo(fBotX + 2, H); ctx.stroke();
             ctx.restore();
           }
         };
