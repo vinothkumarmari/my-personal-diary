@@ -317,6 +317,7 @@
       const [isMaximized, setIsMaximized] = useState(false);
       const [pageImages, setPageImages] = useState({});
       const [pdfDoc, setPdfDoc] = useState(null);
+      const [resumePrompt, setResumePrompt] = useState(null); // { book, pdf, lastPage, totalPages }
       const fileInputRef = useRef(null);
       const firestore = useFirestore(userId);
 
@@ -963,22 +964,85 @@
         try {
           const pdfData = await firestore.loadBookPdf(book.id);
           const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(pdfData) }).promise;
+          const lastPage = book.lastPage || 0;
+          // If there's a saved position beyond page 0, ask user
+          if (lastPage > 0) {
+            setResumePrompt({ book, pdf, lastPage, totalPages: pdf.numPages });
+            setLoading(false);
+            return;
+          }
+          // No saved position, start from beginning
           setPdfDoc(pdf); setPageImages({}); pageImgCacheRef.current = {};
-          setCurrentBook(book); setTotalPages(pdf.numPages); setCurrentPage(book.lastPage || 0);
+          setCurrentBook(book); setTotalPages(pdf.numPages); setCurrentPage(0);
+          currentPageRef.current = 0;
         } catch(e) { console.error(e); alert('Error loading book: ' + (e.message || e)); }
         setLoading(false);
       };
 
+      const handleResume = (startPage) => {
+        const { book, pdf } = resumePrompt;
+        setPdfDoc(pdf); setPageImages({}); pageImgCacheRef.current = {};
+        setCurrentBook(book); setTotalPages(pdf.numPages);
+        const page = startPage === 'continue' ? resumePrompt.lastPage : 0;
+        setCurrentPage(page); currentPageRef.current = page;
+        setResumePrompt(null);
+      };
+
       const closeBook = async () => {
-        if (currentBook) { try { await firestore.updateBookProgress(currentBook.id, currentPage); setBooks(books.map(b => b.id === currentBook.id ? { ...b, lastPage: currentPage } : b)); } catch(e) {} }
+        if (currentBook) { try { await firestore.updateBookProgress(currentBook.id, currentPageRef.current); setBooks(books.map(b => b.id === currentBook.id ? { ...b, lastPage: currentPageRef.current } : b)); } catch(e) {} }
         setCurrentBook(null); setPdfDoc(null); setPageImages({}); pageImgCacheRef.current = {}; setIsMaximized(false);
         if (animRef.current) cancelAnimationFrame(animRef.current);
         flipStateRef.current = null;
       };
 
+      // Auto-save progress every time page changes
+      useEffect(() => {
+        if (!currentBook || currentPage === 0) return;
+        const t = setTimeout(() => {
+          firestore.updateBookProgress(currentBook.id, currentPage)
+            .then(() => setBooks(prev => prev.map(b => b.id === currentBook.id ? { ...b, lastPage: currentPage } : b)))
+            .catch(() => {});
+        }, 1500); // debounce 1.5s
+        return () => clearTimeout(t);
+      }, [currentPage, currentBook]);
+
       const handleDelete = async (id) => { setSyncing('syncing'); try { await firestore.deleteBook(id); setBooks(books.filter(b => b.id !== id)); setSyncing('synced'); setTimeout(() => setSyncing(null), 2000); } catch(e) { setSyncing('error'); } };
 
       if (loading) return <div style={{ textAlign: 'center', padding: '3rem' }}><div className="loading-spinner" style={{ borderColor: 'rgba(29,158,117,0.3)', borderTopColor: '#1D9E75', width: 40, height: 40 }}></div><p style={{ marginTop: '1rem', color: darkMode ? '#aaa' : '#888' }}>{currentBook ? 'Loading book...' : 'Loading library...'}</p></div>;
+
+      // Resume reading dialog
+      if (resumePrompt) {
+        const rp = resumePrompt;
+        const pct = Math.round((rp.lastPage / rp.totalPages) * 100);
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem' }}>
+            <div style={{ background: darkMode ? '#2a2a2a' : '#fff', borderRadius: 16, padding: '2.5rem', maxWidth: 420, width: '100%', boxShadow: '0 12px 40px rgba(0,0,0,0.15)', border: '1px solid ' + (darkMode ? '#444' : '#e0ddd5'), textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 16 }}>📖</div>
+              <h3 style={{ fontSize: 18, fontWeight: 600, color: darkMode ? '#f5f5f5' : '#2c2c2a', marginBottom: 8 }}>{rp.book.name}</h3>
+              <p style={{ fontSize: 14, color: darkMode ? '#aaa' : '#888', marginBottom: 20 }}>
+                You were reading page <strong style={{ color: '#1D9E75' }}>{rp.lastPage + 1}</strong> of {rp.totalPages}
+              </p>
+              <div style={{ background: darkMode ? '#333' : '#f5f2eb', borderRadius: 8, padding: 12, marginBottom: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: darkMode ? '#aaa' : '#888', marginBottom: 6 }}>
+                  <span>Progress</span><span>{pct}%</span>
+                </div>
+                <div style={{ background: darkMode ? '#444' : '#e0ddd5', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+                  <div style={{ width: pct + '%', height: '100%', background: 'linear-gradient(90deg, #1D9E75, #27b88a)', borderRadius: 4, transition: 'width 0.6s ease' }}></div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button onClick={() => handleResume('fresh')} style={{ flex: 1, padding: '12px 16px', background: darkMode ? '#444' : '#f0ede5', color: darkMode ? '#ddd' : '#5a4a38', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>
+                  📄 Start Fresh
+                </button>
+                <button onClick={() => handleResume('continue')} style={{ flex: 1, padding: '12px 16px', background: '#1D9E75', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 14, fontWeight: 600, boxShadow: '0 4px 12px rgba(29,158,117,0.3)' }}>
+                  ▶ Continue (pg {rp.lastPage + 1})
+                </button>
+              </div>
+              <button onClick={() => setResumePrompt(null)} style={{ marginTop: 16, background: 'none', border: 'none', color: darkMode ? '#888' : '#aaa', cursor: 'pointer', fontSize: 13 }}>← Back to Library</button>
+            </div>
+          </div>
+        );
+      }
 
       if (!currentBook) {
         return (
