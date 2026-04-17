@@ -295,6 +295,7 @@
       const animRef = useRef(null);
       const flipStateRef = useRef(null); // { progress: 0-1, direction: 'next'|'prev', dragging: bool, startX, velocity }
       const pageImgCacheRef = useRef({}); // cached Image objects for canvas drawing
+      const currentPageRef = useRef(0); // avoid stale closure in animation ticks
 
       useEffect(() => { (async () => { try { setBooks(await firestore.loadBooks()); } catch(e) { console.error(e); } setLoading(false); })(); }, []);
 
@@ -315,6 +316,9 @@
         for (const p of needed) { newImages[p] = await renderPage(pdf, p, isMaximized ? 2.0 : 1.5); }
         setPageImages(newImages);
       };
+
+      // Keep ref in sync with state
+      useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
 
       useEffect(() => { if (pdfDoc) loadVisiblePages(pdfDoc, currentPage); }, [currentPage, pdfDoc, isMaximized]);
 
@@ -340,7 +344,8 @@
         const W = canvas._logicalW, H = canvas._logicalH;
         const halfW = W / 2;
         const fs = flipStateRef.current;
-        const li = currentPage, ri = currentPage + 1;
+        const cp = currentPageRef.current; // always fresh, no stale closure
+        const li = cp, ri = cp + 1;
 
         // Double-buffer: draw to offscreen canvas first
         if (!offscreenRef.current) offscreenRef.current = document.createElement('canvas');
@@ -641,9 +646,9 @@
           spineGrad.addColorStop(1, '#5a3a1a');
           ctx.fillStyle = spineGrad;
           ctx.fillRect(sx, 0, spineW, H);
-          // Spine shadow
-          ctx.shadowColor = 'rgba(0,0,0,0.5)';
-          ctx.shadowBlur = 15;
+          // Spine shadow (subtle)
+          ctx.shadowColor = 'rgba(0,0,0,0.3)';
+          ctx.shadowBlur = 8;
           ctx.fillRect(sx, 0, spineW, H);
           ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
         };
@@ -651,30 +656,16 @@
         // ---- Compose the scene ----
         if (fs && fs.progress > 0.001 && fs.progress < 0.999) {
           if (fs.direction === 'next') {
-            // Near-complete: draw destination spread to avoid flash
-            if (fs.progress > 0.97) {
-              const destLi = Math.min(li + 2, totalPages - 1);
-              const destRi = Math.min(ri + 2, totalPages);
-              drawLeftPage(destLi);
-              drawRightPage(destRi);
-            } else {
-              drawLeftPage(li);
-              drawRightPage(ri + 2 < totalPages ? ri + 2 : totalPages);
-              drawPageCurl(fs.progress, 'next');
-            }
+            drawLeftPage(li);
+            drawRightPage(ri + 2 < totalPages ? ri + 2 : totalPages);
             drawSpine();
+            // Draw curl ON TOP of spine so spine is hidden under the curled page
+            drawPageCurl(fs.progress, 'next');
           } else {
-            if (fs.progress > 0.97) {
-              const destLi = Math.max(li - 2, 0);
-              const destRi = Math.max(ri - 2, 1);
-              drawLeftPage(destLi);
-              drawRightPage(destRi);
-            } else {
-              drawLeftPage(li - 2 >= 0 ? li - 2 : 0);
-              drawRightPage(ri);
-              drawPageCurl(fs.progress, 'prev');
-            }
+            drawLeftPage(li - 2 >= 0 ? li - 2 : 0);
+            drawRightPage(ri);
             drawSpine();
+            drawPageCurl(fs.progress, 'prev');
           }
         } else {
           drawLeftPage(li);
@@ -686,7 +677,7 @@
         const visCtx = canvas.getContext('2d');
         visCtx.setTransform(1, 0, 0, 1, 0, 0);
         visCtx.drawImage(off, 0, 0);
-      }, [currentPage, totalPages, getPageImg]);
+      }, [totalPages, getPageImg]);
 
       // ---- Resize canvas to match wrapper ----
       const updateCanvasSize = useCallback(() => {
@@ -715,8 +706,8 @@
         }
       }, [currentBook, updateCanvasSize, isMaximized]);
 
-      // Redraw when pages load (skip if animation is running - tick already calls drawBook)
-      useEffect(() => { if (currentBook && !flipStateRef.current) drawBook(); }, [pageImages, currentPage, drawBook, currentBook]);
+      // Redraw when pages load or page changes
+      useEffect(() => { if (currentBook && !flipStateRef.current) drawBook(); }, [pageImages, currentPage, currentBook]);
 
       // ---- Animation loop for smooth flip ----
       const animateFlip = useCallback((direction, onComplete) => {
@@ -736,9 +727,8 @@
           } else {
             flipStateRef.current = null;
             if (onComplete) onComplete();
-            // Don't call drawBook() here - the onComplete setCurrentPage triggers
-            // a React re-render which calls drawBook with the correct new page.
-            // Calling it here uses the OLD closure's currentPage = wrong pages flash.
+            // Safe to call - drawBook uses currentPageRef (always fresh)
+            drawBook();
           }
         };
         animRef.current = requestAnimationFrame(tick);
